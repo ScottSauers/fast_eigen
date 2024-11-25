@@ -14,6 +14,15 @@ import pandas as pd
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
+print("CUDA available:", torch.cuda.is_available())
+print("CUDA version:", torch.version.cuda)
+if torch.cuda.is_available():
+    print("GPU count:", torch.cuda.device_count())
+    print("GPU name:", torch.cuda.get_device_name(0))
+
+print("PyTorch version:", torch.__version__)
+print("PyTorch CUDA version:", torch.version.cuda)
+
 # Mixed precision training
 use_amp = True if torch.cuda.is_available() else False
 if use_amp:

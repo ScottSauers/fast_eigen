@@ -92,20 +92,6 @@ Eigenvector Branch:
 
 ## Training Protocol
 
-### Enhanced Data Generation
-- Sample from diverse graph families:
-  * Random regular graphs
-  * Lattices and grids
-  * Small-world networks
-  * Scale-free networks
-- Structural guarantees:
-  * Connected components control
-  * Degree distribution variety
-  * Bandwidth distribution coverage
-  * Integer eigenvalue cases included
-- Ground truth computation with high-precision eigensolvers
-- Progressive size and complexity scaling
-
 ### Multi-Objective Loss Function
 1. Eigenvalue Accuracy (0.3):
    * Direct MSE with structure preservation
@@ -134,7 +120,7 @@ Eigenvector Branch:
    * Operation count minimization
    * Hardware utilization optimization
 
-### Advanced Training Strategy
+### Training Strategy
 - Multi-phase progression:
   1. Structure learning phase:
      * Focus on property preservation

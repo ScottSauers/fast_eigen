@@ -1,4 +1,4 @@
-# Fast eigensolver: High-Speed Approximate Eigendecomposition for Banded Laplacians
+# Fast Eigensolver: High-Speed Approximate Eigendecomposition for Banded Laplacians
 
 ## Problem Specification
 - Input: Banded Laplacian matrices from sparse, locally connected graphs

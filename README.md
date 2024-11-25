@@ -45,36 +45,43 @@ Structural preservation:
 - Skip connections maintaining direct pathways
 - Integer relationship preservation through specialized layers
 
+
 ### Fusion Network
 
-The fusion network processes band-limited features while maintaining strict structural properties. Input consists of b+1 feature maps with dimensions scaled to preserve necessary information capacity.
+The fusion network integrates features from the band-limited encoder using a lightweight transformer architecture. Input consists of b+1 feature maps (one per diagonal) from the CNN encoder, where b is the bandwidth of the input matrix.
 
-Key operations:
-1. Feature map encoding:
-   - Each of the b+1 diagonals represented by length-N feature maps
-   - Channel depth varies by diagonal importance (64/32/16)
-   - Positional encoding indicates diagonal index (0 to b) to maintain band structure awareness
+Input structure:
+- Main diagonal: length N with 64 channels
+- First three off-diagonals: length N with 32 channels
+- Remaining off-diagonals: length N with 16 channels
+- Total of b+1 feature maps, where b varies by input matrix
 
-2. Multi-head attention mechanism:
-   - Processes relationships between diagonal feature maps
-   - Attention weights learn band-structure importance
-   - Each head can specialize in different diagonal interactions
+Feature projection:
+- All diagonal feature maps are projected to fixed hidden dimension (64)
+- Projection necessary for consistent attention operations
+- Preserves length N for each feature map
+- Position encoding added to indicate diagonal index (0 to b)
 
-3. Structure-preserving transformations:
-   - Maintains feature dimensionality for N×N output reconstruction
-   - Preserves band-limited nature of input
-   - Retains necessary information for eigendecomposition
+Transformer architecture:
+- Single-layer transformer with 4 attention heads
+- Input: (b+1) × N × 64 feature tensor
+- Self-attention computes relationships between diagonal features
+- Output maintains shape: (b+1) × N × 64
+- Same weights used regardless of bandwidth b
 
-4. Parallel processing:
-   - Simultaneous computation across all diagonal feature maps
-   - Efficient batch processing of multiple matrices
-   - GPU-optimized attention operations
+Attention mechanism:
+- Q,K,V projections from 64-dimensional features
+- Attention matrix size adapts to number of diagonals
+- For bandwidth b: computes (b+1) × (b+1) attention weights
+- Each head learns different diagonal relationship patterns
 
-Output characteristics:
-- Adaptive dimension feature matrices based on N and b
-- Preserved zero row sum property
-- Maintained structural constraints
-- Integer relationship preservation
+Output processing:
+- Maintains length N and channel dimension 64
+- Preserves feature relationships across diagonals
+- Output features feed directly into eigendecomposition network
+- No dimension reduction or expansion
+
+The fusion network learns to process diagonal relationships that aid eigendecomposition, while automatically handling varying bandwidths through attention's natural handling of different sequence lengths. The fixed hidden dimension (64) enables consistent weight matrices while the flexible attention mechanism adapts to different numbers of diagonals.
 
 ### Direct Eigendecomposition Network
 

@@ -164,25 +164,44 @@ class EigenDecompositionNetwork(nn.Module):
 
     def forward(self, x):
         batch_size = x.size(0)
-        x = x.view(batch_size, -1)
+        # Reshape input tensor to (batch_size, N*64)
+        x = x.reshape(batch_size, -1)
+        
+        # Pass through fully connected layers
         out = self.fc(x)
+        
+        # Split output into eigenvalues and eigenvectors
         eigenvalues = out[:, :self.N]
-        eigenvectors = out[:, self.N:].view(batch_size, self.N, self.N)
-        eigenvalues = torch.relu(eigenvalues)
-        eigenvectors = torch.nn.functional.normalize(eigenvectors, dim=2)
+        eigenvectors = out[:, self.N:].reshape(batch_size, self.N, self.N)
+        
+        # Apply constraints
+        eigenvalues = torch.relu(eigenvalues)  # Ensure non-negative eigenvalues
+        eigenvectors = torch.nn.functional.normalize(eigenvectors, dim=2)  # Normalize eigenvectors
+        
         return eigenvalues, eigenvectors
 
 class EigensolverModel(nn.Module):
     def __init__(self, N, b):
         super(EigensolverModel, self).__init__()
+        self.N = N
+        self.b = b
         self.encoder = BandLimitedEncoder(N, b)
         self.fusion = FusionNetwork(N, b)
         self.decoder = EigenDecompositionNetwork(N)
 
     def forward(self, diagonals):
+        # Encode the diagonals
         features = self.encoder(diagonals)
-        fused = self.fusion(features)
+        
+        # Fuse the features
+        fused = self.fusion(features)  # Shape: [B, 64, N]
+        
+        # Ensure proper tensor layout before decoding
+        fused = fused.contiguous()
+        
+        # Decode to get eigenvalues and eigenvectors
         eigenvalues, eigenvectors = self.decoder(fused)
+        
         return eigenvalues, eigenvectors
 
 def extract_diagonals(L, b):

@@ -44,7 +44,6 @@ Structural preservation:
 - ReLU-based activation functions preserving non-negativity
 - Position encoding capturing bandwidth structure
 - Skip connections maintaining direct pathways
-- Zero row sum constraints actively enforced
 - Integer relationship preservation through specialized layers
 
 ### Fusion Network

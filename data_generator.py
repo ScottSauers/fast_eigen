@@ -41,28 +41,53 @@ class LaplacianGenerator:
         }
 
     def generate_random_params(self, min_nodes=100, max_nodes=1000) -> GraphParams:
-        """Generate random parameters for graph generation"""
+        """Generate random parameters for graph generation, ensuring required params for each type"""
         n = random.randint(min_nodes, max_nodes)
         graph_type = random.choice(list(GraphType))
         
-        params = GraphParams(
-            n=n,
-            graph_type=graph_type,
-            # Community parameters
-            num_communities=random.randint(2, int(np.sqrt(n))) if random.random() < 0.7 else None,
-            inter_community_prob=random.uniform(0.01, 0.3) if random.random() < 0.7 else None,
-            intra_community_prob=random.uniform(0.01, 0.2) if random.random() < 0.7 else None,
-            # Circulant parameters
-            k_neighbors=random.randint(1, int(np.log2(n))) if random.random() < 0.7 else None,
-            perturbation_prob=random.uniform(0, 0.2) if random.random() < 0.7 else None,
-            # Local connectivity parameters
-            min_connections=random.randint(1, 3) if random.random() < 0.7 else None,
-            distance_decay=random.uniform(0.1, 2.0) if random.random() < 0.7 else None,
-            # General parameters
-            periodic=random.choice([True, False]),
-            allow_overlapping=random.choice([True, False])
-        )
-        return params
+        # Base parameters all types might use
+        params = {
+            'n': n,
+            'graph_type': graph_type,
+            'periodic': random.choice([True, False]),
+            'allow_overlapping': random.choice([True, False])
+        }
+        
+        # Add required parameters based on graph type
+        if graph_type == GraphType.PATH_COMMUNITY:
+            params.update({
+                'num_communities': random.randint(2, int(np.sqrt(n))),
+                'inter_community_prob': random.uniform(0.01, 0.3)
+            })
+        
+        elif graph_type == GraphType.CIRCULANT_COMMUNITY:
+            params.update({
+                'num_communities': random.randint(2, int(np.sqrt(n))),
+                'k_neighbors': random.randint(1, int(np.log2(n))),
+                'inter_community_prob': random.uniform(0.01, 0.3),
+                'intra_community_prob': random.uniform(0.01, 0.2)
+            })
+        
+        elif graph_type == GraphType.APPROX_CIRCULANT:
+            params.update({
+                'k_neighbors': random.randint(1, int(np.log2(n))),
+                'perturbation_prob': random.uniform(0, 0.2)
+            })
+        
+        elif graph_type == GraphType.LOCAL_BANDED:
+            params.update({
+                'min_connections': random.randint(1, 3),
+                'distance_decay': random.uniform(0.1, 2.0)
+            })
+        
+        elif graph_type == GraphType.HIERARCHICAL:
+            params.update({
+                'num_communities': random.randint(2, int(np.sqrt(n))),
+                'k_neighbors': random.randint(1, int(np.log2(n))),
+                'inter_community_prob': random.uniform(0.01, 0.3)
+            })
+        
+        return GraphParams(**params)
 
     def generate(self, params: GraphParams) -> Tuple[np.ndarray, nx.Graph]:
         """Generate Laplacian matrix and corresponding graph based on parameters"""

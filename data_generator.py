@@ -66,6 +66,20 @@ class LaplacianGenerator:
 
     def generate(self, params: GraphParams) -> Tuple[np.ndarray, nx.Graph]:
         """Generate Laplacian matrix and corresponding graph based on parameters"""
+        # Validate and set default parameters based on graph type
+        if params.graph_type == GraphType.APPROX_CIRCULANT:
+            params.k_neighbors = params.k_neighbors if params.k_neighbors is not None else 2
+        elif params.graph_type == GraphType.CIRCULANT_COMMUNITY:
+            params.k_neighbors = params.k_neighbors if params.k_neighbors is not None else 2
+            params.num_communities = params.num_communities if params.num_communities is not None else 2
+            params.inter_community_prob = params.inter_community_prob if params.inter_community_prob is not None else 0.1
+        elif params.graph_type == GraphType.PATH_COMMUNITY:
+            params.num_communities = params.num_communities if params.num_communities is not None else 2
+            params.inter_community_prob = params.inter_community_prob if params.inter_community_prob is not None else 0.1
+        elif params.graph_type == GraphType.LOCAL_BANDED:
+            params.min_connections = params.min_connections if params.min_connections is not None else 1
+            params.distance_decay = params.distance_decay if params.distance_decay is not None else 0.5
+    
         generator_func = self.supported_types[params.graph_type]
         G = generator_func(params)
         

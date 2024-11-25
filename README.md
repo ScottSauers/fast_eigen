@@ -1,116 +1,119 @@
-# Fast Eigensolver: High-Speed Approximate Eigendecomposition for Banded Laplacians
+# Fast Eigensolver: High-Speed Eigendecomposition for Banded Laplacian Matrices
 
-## Problem Specification
-- Input: Banded Laplacian matrices from sparse, locally connected graphs
-- Output: All eigenvalues and eigenvectors
-- Constraint: Inference must be faster than traditional algorithms
-- Trade-off: Approximate solutions accepted for speed
+## Input Specifications
+- Matrix Type: Symmetric Laplacian matrices from undirected, locally connected graphs
+- Values: Integer-valued entries
+- Size: N×N
+- Bandwidth: b (matrix has b non-zero diagonals above main diagonal)
+- Sparsity: Maximum of 2bN + N non-zero elements
+- Properties:
+  * Main diagonal contains positive integers
+  * Off-diagonals contain -1 or 0 only
+  * Row sums are zero (Laplacian property)
 
-## Matrix Properties
-- Size: N×N matrix
-- Bandwidth: b (matrix is (2b+1)-diagonal)
-- Symmetry: Symmetric (Laplacian property)
-- Sparsity: O(bN) non-zero elements
-- Structure: Banded, locally connected
+## Matrix Representation
+- Store only upper triangular part (due to symmetry)
+- Each diagonal stored at its natural length:
+  * Main diagonal: length N
+  * First off-diagonal: length N-1
+  * k-th off-diagonal: length N-k
+- No padding or normalization (preserve integer structure)
+- Total storage: (b+1) vectors of decreasing length
 
-## Input Representation
-1. Matrix Encoding:
-   - Split into 2b+1 diagonals
-   - Each diagonal stored as vector length N
-   - Zero-pad shorter diagonals to length N
-   - Normalize values to [-1,1] range
+## Neural Architecture
 
-2. Positional Information:
-   - Each diagonal indexed [-b, ..., 0, ..., b]
-   - Position within diagonal: normalized [0,1]
-   - Combined positional encoding using sin/cos
-
-## Architecture Details
-
-### 1. Parallel Diagonal Encoder
-- Input: 2b+1 channels, each N length
+### 1. Diagonal Encoder Network
+- Separate 1D CNN for each diagonal
+- Input sizes decrease with diagonal number:
+  * Main diagonal: 1 × N
+  * k-th diagonal: 1 × (N-k)
 - Architecture per diagonal:
-   * 3 convolutional layers
-   * Channel progression: 1 → 64 → 128 → 256
-   * Kernel size: 3
-   * Padding: Same
-   * Activation: LeakyReLU(0.2)
-   * Batch Normalization after each conv
+  * Conv1D(in=1, out=64, kernel=3) → LeakyReLU
+  * Conv1D(in=64, out=128, kernel=3) → LeakyReLU
+  * Conv1D(in=128, out=256, kernel=3) → LeakyReLU
+- No padding used (preserve length reduction)
+- No batch normalization (integer inputs don't need it)
+- All diagonals processed in parallel on GPU
 
-### 2. Fusion Module
-- Input: (2b+1) × 256 × N features
-- Operations:
-   * 1×1 convolution to merge diagonal features
-   * Channel reduction: (2b+1)×256 → 512
-   * Global feature extraction
-   * Output: 512×N feature matrix
+### 2. Diagonal Fusion Network
+- Input: b+1 feature maps of shape (256 × varying_length)
+- Local fusion operation:
+  * Group features from corresponding positions across diagonals
+  * 1x1 convolution merges diagonal features at each position
+  * Output channels: 512 at each position
+- No global operations (maintain locality)
+- Output: 512 × N feature matrix
 
-### 3. Parallel Decoder
-- Input: 512×N fused features
-- Architecture:
-   * Two-branch design for values/vectors
-   * Eigenvalue branch:
-     - 2 linear layers: 512 → 256 → N
-     - Outputs N eigenvalues
-   * Eigenvector branch:
-     - Linear expansion: 512 → N×N
-     - Reshape to N×N matrix
-     - Orthogonalization layer
+### 3. Decoder Network
+Two parallel branches:
+
+Eigenvalue Branch:
+- Input: 512 × N feature matrix
+- Global average pooling to 512 features
+- Linear(512 → N) outputs eigenvalues
+- Natural ordering by magnitude (no explicit sorting needed)
+
+Eigenvector Branch:
+- Input: 512 × N feature matrix
+- Progressive upsampling to N × N:
+  * Linear(512 → 1024) per position
+  * Reshape and expand to N × N matrix
+- No explicit orthogonalization (learned through loss)
 
 ## Training Protocol
 
 ### Data Generation
-- Source: Random graphs with specified connectivity
-- Size range: Various N within GPU memory
-- Bandwidth range: Various b values
-- Ground truth: Exact eigendecomposition
+- Sample random connected graphs with bandwidth ≤ b
+- Convert to integer-valued Laplacian matrices
+- Compute ground truth using standard eigendecomposition
+- Generate batches of increasing size N during training
 
 ### Loss Functions
-1. Eigenvalue Loss:
-   - MSE between predicted and true eigenvalues
-   - Weighted by eigenvalue magnitude
-   - Weight: 0.4
+Combined loss with three terms:
 
-2. Eigenvector Loss:
-   - Subspace alignment error
-   - Orthogonality penalty
-   - Weight: 0.4
+1. Eigenvalue MSE Loss (weight 0.4):
+   * Direct MSE between predicted and true eigenvalues
+   * No magnitude weighting (integers are already well-scaled)
 
-3. Reconstruction Loss:
-   - Original matrix reconstruction error
-   - Weight: 0.2
+2. Eigenvector Alignment Loss (weight 0.4):
+   * Subspace alignment between predicted and true eigenvectors
+   * Implicit orthogonality through reconstruction
 
-### Training Parameters
-- Optimizer: AdamW
-- Learning rate: 1e-4 with cosine decay
-- Batch size: Maximum fitting GPU
-- Epochs: 100
-- Mixed precision: FP16
-- Gradient clipping: 1.0
+3. Matrix Reconstruction Loss (weight 0.2):
+   * MSE between original matrix and V∙Λ∙V^T
+   * Check sparsity pattern preservation
 
-## Inference Optimization
-1. Hardware Utilization:
-   - Full GPU parallelization
-   - Tensor core optimization
-   - Batch processing when possible
+### Training Details
+- Optimizer: AdamW with lr=1e-4
+- Mixed precision training (FP16)
+- Gradient clipping at 1.0
+- Early stopping on validation loss
+- Progressive N scaling during training
 
-2. Memory Management:
-   - Streaming large matrices
-   - In-place operations
-   - Mixed precision inference
+## Inference Optimizations
 
-3. Post-processing:
-   - Eigenvalue sorting
-   - Eigenvector orthogonalization
-   - Optional refinement step
+Speed Optimizations:
+- Integer-optimized input processing
+- Parallel diagonal processing
+- Fused CUDA kernels for key operations
+- Batch processing for multiple matrices
 
-## Performance Specifications
-- Time complexity: O(nb) processing + O(n²) generation
-- Memory complexity: O(n²)
-- Accuracy target: 1e-3 relative error
-- Batch throughput: Scale with GPU memory
+Memory Optimizations:
+- In-place operations where possible
+- Shared memory usage for diagonal processing
+- Progressive memory allocation
+- Mixed precision inference
+
+No post-processing steps (everything learned end-to-end)
+
+## Performance Targets
+- Time Complexity: O(nb) encoding + O(n²) decoding
+- Memory Usage: O(n²) peak memory
+- Accuracy: 1e-3 relative error on eigenvalues
+- Throughput: Scales with available GPU memory
+- Batch Processing: Yes, with dynamic batching
 
 ## Implementation Requirements
-- Framework: PyTorch
-- GPU: CUDA support required
-- Dependencies: torch, numpy, scipy
+- Framework: PyTorch with CUDA
+- GPU: CUDA-capable device
+- Memory: Scales with largest N needed

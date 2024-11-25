@@ -7,11 +7,12 @@
 - Bandwidth: b (matrix has b non-zero diagonals above main diagonal)
 - Sparsity: Maximum of 2bN + N non-zero elements
 - Properties:
-  * Main diagonal contains positive integers
-  * Off-diagonals contain -1 or 0 only
+  * Main diagonal contains positive integers (degree of each vertex)
+  * Off-diagonals contain -1 or 0 only (connectivity)
   * Row sums are zero (Laplacian property)
+  * All eigenvalues are real and non-negative (positive semi-definite)
 
-## Matrix Representation
+## Matrix Structure Exploitation
 - Store only upper triangular part (due to symmetry)
 - Each diagonal stored at its natural length:
   * Main diagonal: length N
@@ -19,101 +20,193 @@
   * k-th off-diagonal: length N-k
 - No padding or normalization (preserve integer structure)
 - Total storage: (b+1) vectors of decreasing length
+- Additional structural properties to exploit:
+  * Eigenvalue interlacing between principal submatrices
+  * Bandwidth preservation under orthogonal transformations
+  * Trace equals sum of eigenvalues equals sum of diagonal entries
+  * Integer determinant (useful for error checking)
 
 ## Neural Architecture
 
 ### 1. Diagonal Encoder Network
-- Separate 1D CNN for each diagonal
+- Separate 1D CNN for each diagonal with adaptive architecture:
+  * Kernel sizes scale with bandwidth: min(max(3, b/4), 11)
+  * Channel width scales with diagonal importance
 - Input sizes decrease with diagonal number:
   * Main diagonal: 1 × N
   * k-th diagonal: 1 × (N-k)
 - Architecture per diagonal:
-  * Conv1D(in=1, out=64, kernel=3) → LeakyReLU
-  * Conv1D(in=64, out=128, kernel=3) → LeakyReLU
-  * Conv1D(in=128, out=256, kernel=3) → LeakyReLU
-- No padding used (preserve length reduction)
-- No batch normalization (integer inputs don't need it)
+  * Conv1D(in=1, out=64, kernel=adaptive) → Structure-Preserving-ReLU
+  * Conv1D(in=64, out=128, kernel=adaptive) → Structure-Preserving-ReLU
+  * Conv1D(in=128, out=256, kernel=adaptive) → Structure-Preserving-ReLU
+- Structure-preserving features:
+  * Integer-aware activation functions
+  * Position encoding relative to diagonal position
+  * Bandwidth-aware feature extraction
+  * Skip connections preserving structural information
+- No padding (preserve length reduction)
+- No batch normalization (integer inputs)
 - All diagonals processed in parallel on GPU
+- Additional constraints:
+  * Preserve zero row sum property
+  * Maintain integer relationships
+  * Respect eigenvalue interlacing
 
-### 2. Diagonal Fusion Network
+### 2. Structure-Aware Fusion Network
 - Input: b+1 feature maps of shape (256 × varying_length)
-- Local fusion operation:
-  * Group features from corresponding positions across diagonals
-  * 1x1 convolution merges diagonal features at each position
-  * Output channels: 512 at each position
-- No global operations (maintain locality)
-- Output: 512 × N feature matrix
+- Enhanced local fusion operation:
+  * Group features respecting bandwidth locality
+  * Structure-preserving merge operation
+  * Laplacian constraint preservation
+  * Integer relationship maintenance
+- Output: 512 × N feature matrix with guarantees:
+  * Preserved zero row sum property
+  * Maintained bandwidth structure
+  * Integer relationship preservation
+- Skip connections for structural preservation
+- Position-aware operations throughout
 
-### 3. Decoder Network
-Two parallel branches:
+### 3. Enhanced Decoder Network
 
 Eigenvalue Branch:
 - Input: 512 × N feature matrix
-- Global average pooling to 512 features
-- Linear(512 → N) outputs eigenvalues
-- Natural ordering by magnitude (no explicit sorting needed)
+- Structure-aware pooling replacing global average pooling
+- Position and bandwidth aware feature processing
+- Structural constraints:
+  * Non-negativity enforcement
+  * Integer relationship preservation
+  * Trace preservation
+  * Eigenvalue interlacing guarantees
+- Output: Ordered eigenvalues preserving multiplicity structure
 
 Eigenvector Branch:
 - Input: 512 × N feature matrix
-- Progressive upsampling to N × N:
-  * Linear(512 → 1024) per position
-  * Reshape and expand to N × N matrix
-- No explicit orthogonalization (learned through loss)
+- Structure-preserving upsampling to N × N:
+  * Bandwidth-aware expansion
+  * Orthogonality-preserving operations
+- Architectural enforcement of:
+  * Soft orthogonality constraints
+  * Zero row sum preservation
+  * Integer structure maintenance
+  * Bandwidth preservation
 
 ## Training Protocol
 
-### Data Generation
-- Sample random connected graphs with bandwidth ≤ b
-- Convert to integer-valued Laplacian matrices
-- Compute ground truth using standard eigendecomposition
-- Generate batches of increasing size N during training
+### Enhanced Data Generation
+- Sample from diverse graph families:
+  * Random regular graphs
+  * Lattices and grids
+  * Small-world networks
+  * Scale-free networks
+- Structural guarantees:
+  * Connected components control
+  * Degree distribution variety
+  * Bandwidth distribution coverage
+  * Integer eigenvalue cases included
+- Ground truth computation with high-precision eigensolvers
+- Progressive size and complexity scaling
 
-### Loss Functions
-Combined loss with three terms:
+### Multi-Objective Loss Function
+1. Eigenvalue Accuracy (0.3):
+   * Direct MSE with structure preservation
+   * Trace consistency enforcement
+   * Integer eigenvalue preservation
+   * Multiplicity preservation
+   * Bandwidth-aware error weighting
 
-1. Eigenvalue MSE Loss (weight 0.4):
-   * Direct MSE between predicted and true eigenvalues
-   * No magnitude weighting (integers are already well-scaled)
+2. Eigenvector Quality (0.3):
+   * Soft orthogonality constraints
+   * Zero row sum preservation
+   * Bandwidth locality maintenance
+   * Integer relationship preservation
+   * Subspace alignment verification
 
-2. Eigenvector Alignment Loss (weight 0.4):
-   * Subspace alignment between predicted and true eigenvectors
-   * Implicit orthogonality through reconstruction
+3. Structural Integrity (0.2):
+   * Laplacian property preservation
+   * Integer constraints satisfaction
+   * Bandwidth preservation
+   * Connected component preservation
+   * Graph property maintenance
 
-3. Matrix Reconstruction Loss (weight 0.2):
-   * MSE between original matrix and V∙Λ∙V^T
-   * Check sparsity pattern preservation
+4. Computational Efficiency (0.2):
+   * Speed penalty (monotonic but bounded)
+   * Memory usage optimization
+   * Operation count minimization
+   * Hardware utilization optimization
 
-### Training Details
-- Optimizer: AdamW with lr=1e-4
-- Mixed precision training (FP16)
-- Gradient clipping at 1.0
-- Early stopping on validation loss
-- Progressive N scaling during training
+### Advanced Training Strategy
+- Multi-phase progression:
+  1. Structure learning phase:
+     * Focus on property preservation
+     * Strict accuracy requirements
+     * Gradual complexity increase
+  2. Speed optimization phase:
+     * Runtime optimization
+     * Operation fusion discovery
+     * Hardware utilization improvement
+  3. Joint optimization phase:
+     * Dynamic objective balancing
+     * Adaptive batch sizing
+     * Resource-aware training
 
-## Inference Optimizations
+### Implementation Details
+- Optimizer: AdamW with cosine learning rate
+- Mixed precision training (FP16/BF16)
+- Gradient clipping with norm preservation
+- Early stopping with multiple criteria
+- Progressive N and b scaling
+- Dynamic batch sizing based on:
+  * Matrix size N
+  * Bandwidth b
+  * Hardware capabilities
+  * Memory constraints
 
-Speed Optimizations:
-- Integer-optimized input processing
-- Parallel diagonal processing
-- Fused CUDA kernels for key operations
-- Batch processing for multiple matrices
+## Optimizations
 
-Memory Optimizations:
-- In-place operations where possible
-- Shared memory usage for diagonal processing
-- Progressive memory allocation
-- Mixed precision inference
+### Mathematical Optimizations
+- Eigenvalue interlacing exploitation
+- Integer arithmetic where possible
+- Structural property preservation
+- Bandwidth-aware algorithms
+- Connected component handling
 
-No post-processing steps (everything learned end-to-end)
+### Computational Optimizations
+- Structure-preserving fused operations
+- Bandwidth-aware memory access
+- Integer-optimized processing
+- Hardware-specific kernels
+- Dynamic precision selection
 
-## Performance Targets
-- Time Complexity: O(nb) encoding + O(n²) decoding
-- Memory Usage: O(n²) peak memory
-- Accuracy: 1e-3 relative error on eigenvalues
-- Throughput: Scales with available GPU memory
-- Batch Processing: Yes, with dynamic batching
+### Memory Optimizations
+- Bandwidth-aware storage
+- In-place operations
+- Shared memory utilization
+- Progressive allocation
+- Cache-friendly access patterns
 
-## Implementation Requirements
-- Framework: PyTorch with CUDA
+## Performance Specifications
+
+### Computational Complexity
+- Encoding: O(nb) with optimized constants
+- Decoding: O(n²) with structure preservation
+- Memory: O(n²) peak with bandwidth optimization
+- Batch processing: O(Knb + Kn²) for K matrices
+
+### Accuracy Targets
+- Eigenvalue relative error: 1e-6
+- Eigenvector orthogonality: 1e-6
+- Integer preservation: Exact
+- Structure preservation: Exact
+- Connected component preservation: Exact
+
+### Hardware Requirements
 - GPU: CUDA-capable device
-- Memory: Scales with largest N needed
+- Memory: Scales with max(N, b)
+- Compute: Scales with problem size
+- Storage: O(nb) per matrix
+
+### Scalability
+- Matrix size scaling: Linear in n
+- Bandwidth scaling: Linear in b
+- Batch scaling: Limited by memory
+- Hardware scaling: Near-linear

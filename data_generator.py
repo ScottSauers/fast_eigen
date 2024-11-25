@@ -9,271 +9,306 @@ import matplotlib.colors as mcolors
 from tqdm import tqdm
 
 class GraphType(Enum):
-    PATH_COMMUNITY = "path_community"
-    CIRCULANT_COMMUNITY = "circulant_community"
-    APPROX_CIRCULANT = "approx_circulant"
-    LOCAL_BANDED = "local_banded"
-    HIERARCHICAL = "hierarchical"  # Bonus type combining others
+   PATH_COMMUNITY = "path_community"
+   CIRCULANT_COMMUNITY = "circulant_community"
+   APPROX_CIRCULANT = "approx_circulant"
+   LOCAL_BANDED = "local_banded"
+   HIERARCHICAL = "hierarchical"
+   MULTI_SCALE = "multi_scale"
+   DIFFUSION = "diffusion"
 
 @dataclass
 class GraphParams:
-    n: int  # Number of nodes
-    graph_type: GraphType
-    # Community parameters
-    num_communities: Optional[int] = None
-    inter_community_prob: Optional[float] = None
-    intra_community_prob: Optional[float] = None
-    # Circulant parameters
-    k_neighbors: Optional[int] = None
-    perturbation_prob: Optional[float] = None
-    # Local connectivity parameters
-    min_connections: Optional[int] = None
-    distance_decay: Optional[float] = None
-    # General parameters
-    periodic: bool = True
-    allow_overlapping: bool = False
+   n: int
+   graph_type: GraphType
+   # Community parameters
+   num_communities: Optional[int] = None
+   inter_community_prob: Optional[float] = None
+   intra_community_prob: Optional[float] = None
+   # Circulant parameters
+   k_neighbors: Optional[int] = None
+   perturbation_prob: Optional[float] = None
+   # Local connectivity parameters
+   min_connections: Optional[int] = None
+   distance_decay: Optional[float] = None
+   # Multi-scale parameters
+   scale_widths: Optional[List[float]] = None
+   scale_strengths: Optional[List[float]] = None
+   # Diffusion parameters
+   num_sources: Optional[int] = None
+   diffusion_length: Optional[float] = None
+   diffusion_strength: Optional[float] = None
+   # General parameters
+   periodic: bool = True
+   allow_overlapping: bool = False
 
 class LaplacianGenerator:
-    def __init__(self):
-        self.supported_types = {
-            GraphType.PATH_COMMUNITY: self._generate_path_community,
-            GraphType.CIRCULANT_COMMUNITY: self._generate_circulant_community,
-            GraphType.APPROX_CIRCULANT: self._generate_approx_circulant,
-            GraphType.LOCAL_BANDED: self._generate_local_banded,
-            GraphType.HIERARCHICAL: self._generate_hierarchical
-        }
+   def __init__(self):
+       self.supported_types = {
+           GraphType.PATH_COMMUNITY: self._generate_path_community,
+           GraphType.CIRCULANT_COMMUNITY: self._generate_circulant_community,
+           GraphType.APPROX_CIRCULANT: self._generate_approx_circulant,
+           GraphType.LOCAL_BANDED: self._generate_local_banded,
+           GraphType.HIERARCHICAL: self._generate_hierarchical,
+           GraphType.MULTI_SCALE: self._generate_multi_scale,
+           GraphType.DIFFUSION: self._generate_diffusion
+       }
 
-    def generate_random_params(self, min_nodes=100, max_nodes=1000) -> GraphParams:
-        """Generate random parameters for graph generation, ensuring required params for each type"""
-        n = random.randint(min_nodes, max_nodes)
-        graph_type = random.choice(list(GraphType))
-        
-        # Base parameters all types might use
-        params = {
-            'n': n,
-            'graph_type': graph_type,
-            'periodic': random.choice([True, False]),
-            'allow_overlapping': random.choice([True, False])
-        }
-        
-        # Add required parameters based on graph type
-        if graph_type == GraphType.PATH_COMMUNITY:
-            params.update({
-                'num_communities': random.randint(2, int(np.sqrt(n))),
-                'inter_community_prob': random.uniform(0.01, 0.3)
-            })
-        
-        elif graph_type == GraphType.CIRCULANT_COMMUNITY:
-            params.update({
-                'num_communities': random.randint(2, int(np.sqrt(n))),
-                'k_neighbors': random.randint(1, int(np.log2(n))),
-                'inter_community_prob': random.uniform(0.01, 0.3),
-                'intra_community_prob': random.uniform(0.01, 0.2)
-            })
-        
-        elif graph_type == GraphType.APPROX_CIRCULANT:
-            params.update({
-                'k_neighbors': random.randint(1, int(np.log2(n))),
-                'perturbation_prob': random.uniform(0, 0.2)
-            })
-        
-        elif graph_type == GraphType.LOCAL_BANDED:
-            params.update({
-                'min_connections': random.randint(1, 3),
-                'distance_decay': random.uniform(0.1, 2.0)
-            })
-        
-        elif graph_type == GraphType.HIERARCHICAL:
-            params.update({
-                'num_communities': random.randint(2, int(np.sqrt(n))),
-                'k_neighbors': random.randint(1, int(np.log2(n))),
-                'inter_community_prob': random.uniform(0.01, 0.3)
-            })
-        
-        return GraphParams(**params)
+   def generate_random_params(self, min_nodes=100, max_nodes=1000) -> GraphParams:
+       n = random.randint(min_nodes, max_nodes)
+       graph_type = random.choice(list(GraphType))
+       
+       params = {
+           'n': n,
+           'graph_type': graph_type,
+           'periodic': random.choice([True, False]),
+           'allow_overlapping': random.choice([True, False])
+       }
+       
+       if graph_type == GraphType.PATH_COMMUNITY:
+           params.update({
+               'num_communities': random.randint(2, int(np.sqrt(n))),
+               'inter_community_prob': random.uniform(0.01, 0.3)
+           })
+       
+       elif graph_type == GraphType.CIRCULANT_COMMUNITY:
+           params.update({
+               'num_communities': random.randint(2, int(np.sqrt(n))),
+               'k_neighbors': random.randint(1, int(np.log2(n))),
+               'inter_community_prob': random.uniform(0.01, 0.3),
+               'intra_community_prob': random.uniform(0.01, 0.2)
+           })
+       
+       elif graph_type == GraphType.APPROX_CIRCULANT:
+           params.update({
+               'k_neighbors': random.randint(1, int(np.log2(n))),
+               'perturbation_prob': random.uniform(0, 0.2)
+           })
+       
+       elif graph_type == GraphType.LOCAL_BANDED:
+           params.update({
+               'min_connections': random.randint(1, 3),
+               'distance_decay': random.uniform(0.1, 2.0)
+           })
+       
+       elif graph_type == GraphType.HIERARCHICAL:
+           params.update({
+               'num_communities': random.randint(2, int(np.sqrt(n))),
+               'k_neighbors': random.randint(1, int(np.log2(n))),
+               'inter_community_prob': random.uniform(0.01, 0.3)
+           })
+           
+       elif graph_type == GraphType.MULTI_SCALE:
+           num_scales = random.randint(2, 4)
+           params.update({
+               'scale_widths': [random.uniform(1, n/4) for _ in range(num_scales)],
+               'scale_strengths': [random.uniform(0.1, 1.0) for _ in range(num_scales)]
+           })
+           
+       elif graph_type == GraphType.DIFFUSION:
+           params.update({
+               'num_sources': random.randint(1, int(np.sqrt(n))),
+               'diffusion_length': random.uniform(n/20, n/5),
+               'diffusion_strength': random.uniform(0.1, 1.0)
+           })
+       
+       return GraphParams(**params)
 
-    def generate(self, params: GraphParams) -> Tuple[np.ndarray, nx.Graph]:
-        """Generate Laplacian matrix and corresponding graph based on parameters"""
-        # Validate and set default parameters based on graph type
-        if params.graph_type == GraphType.APPROX_CIRCULANT:
-            params.k_neighbors = params.k_neighbors if params.k_neighbors is not None else 2
-        elif params.graph_type == GraphType.CIRCULANT_COMMUNITY:
-            params.k_neighbors = params.k_neighbors if params.k_neighbors is not None else 2
-            params.num_communities = params.num_communities if params.num_communities is not None else 2
-            params.inter_community_prob = params.inter_community_prob if params.inter_community_prob is not None else 0.1
-        elif params.graph_type == GraphType.PATH_COMMUNITY:
-            params.num_communities = params.num_communities if params.num_communities is not None else 2
-            params.inter_community_prob = params.inter_community_prob if params.inter_community_prob is not None else 0.1
-        elif params.graph_type == GraphType.LOCAL_BANDED:
-            params.min_connections = params.min_connections if params.min_connections is not None else 1
-            params.distance_decay = params.distance_decay if params.distance_decay is not None else 0.5
-    
-        generator_func = self.supported_types[params.graph_type]
-        G = generator_func(params)
-        
-        # make graph connected
-        if not nx.is_connected(G):
-            self._make_connectivity(G)
-            
-        # Compute Laplacian
-        L = nx.laplacian_matrix(G).toarray()
-        return L, G
+   def generate(self, params: GraphParams) -> Tuple[np.ndarray, nx.Graph]:
+       if params.graph_type == GraphType.APPROX_CIRCULANT:
+           params.k_neighbors = params.k_neighbors if params.k_neighbors is not None else 2
+       elif params.graph_type == GraphType.CIRCULANT_COMMUNITY:
+           params.k_neighbors = params.k_neighbors if params.k_neighbors is not None else 2
+           params.num_communities = params.num_communities if params.num_communities is not None else 2
+           params.inter_community_prob = params.inter_community_prob if params.inter_community_prob is not None else 0.1
+       elif params.graph_type == GraphType.PATH_COMMUNITY:
+           params.num_communities = params.num_communities if params.num_communities is not None else 2
+           params.inter_community_prob = params.inter_community_prob if params.inter_community_prob is not None else 0.1
+       elif params.graph_type == GraphType.LOCAL_BANDED:
+           params.min_connections = params.min_connections if params.min_connections is not None else 1
+           params.distance_decay = params.distance_decay if params.distance_decay is not None else 0.5
+   
+       generator_func = self.supported_types[params.graph_type]
+       G = generator_func(params)
+       
+       if not nx.is_connected(G):
+           self._make_connectivity(G)
+           
+       L = nx.laplacian_matrix(G).toarray()
+       return L, G
 
-    def _generate_path_community(self, params: GraphParams) -> nx.Graph:
-        """Generate path-based community graph"""
-        G = nx.Graph()
-        community_size = params.n // params.num_communities
-        
-        # Create path graphs for each community
-        for c in range(params.num_communities):
-            start = c * community_size
-            path = nx.path_graph(range(start, start + community_size))
-            G.add_edges_from(path.edges())
-        
-        # Add inter-community connections
-        for i in range(params.num_communities):
-            for j in range(i + 1, params.num_communities):
-                start_i = i * community_size
-                start_j = j * community_size
-                for a in range(community_size):
-                    if np.random.random() < params.inter_community_prob:
-                        G.add_edge(start_i + a, start_j + a)
-        
-        return G
+   def _generate_path_community(self, params: GraphParams) -> nx.Graph:
+       G = nx.Graph()
+       community_size = params.n // params.num_communities
+       
+       for c in range(params.num_communities):
+           start = c * community_size
+           path = nx.path_graph(range(start, start + community_size))
+           G.add_edges_from(path.edges())
+       
+       for i in range(params.num_communities):
+           for j in range(i + 1, params.num_communities):
+               start_i = i * community_size
+               start_j = j * community_size
+               for a in range(community_size):
+                   if np.random.random() < params.inter_community_prob:
+                       G.add_edge(start_i + a, start_j + a)
+       
+       return G
 
-    def _generate_circulant_community(self, params: GraphParams) -> nx.Graph:
-        """Generate circulant community graph"""
-        G = nx.Graph()
-        community_size = params.n // params.num_communities
-        
-        # Create circulant structure within communities
-        for c in range(params.num_communities):
-            start = c * community_size
-            for i in range(start, start + community_size):
-                for j in range(1, params.k_neighbors + 1):
-                    node1 = i
-                    node2 = start + ((i - start + j) % community_size)
-                    G.add_edge(node1, node2)
-                    
-        # Add inter-community connections with varying patterns
-        for i in range(params.num_communities):
-            for j in range(i + 1, params.num_communities):
-                start_i = i * community_size
-                start_j = j * community_size
-                for a in range(community_size):
-                    if np.random.random() < params.inter_community_prob:
-                        # Mix of diagonal and straight connections
-                        if np.random.random() < 0.5:
-                            G.add_edge(start_i + a, start_j + (community_size - a - 1))
-                        else:
-                            G.add_edge(start_i + a, start_j + a)
-        
-        return G
+   def _generate_circulant_community(self, params: GraphParams) -> nx.Graph:
+       G = nx.Graph()
+       community_size = params.n // params.num_communities
+       
+       for c in range(params.num_communities):
+           start = c * community_size
+           for i in range(start, start + community_size):
+               for j in range(1, params.k_neighbors + 1):
+                   node1 = i
+                   node2 = start + ((i - start + j) % community_size)
+                   G.add_edge(node1, node2)
+                   
+       for i in range(params.num_communities):
+           for j in range(i + 1, params.num_communities):
+               start_i = i * community_size
+               start_j = j * community_size
+               for a in range(community_size):
+                   if np.random.random() < params.inter_community_prob:
+                       if np.random.random() < 0.5:
+                           G.add_edge(start_i + a, start_j + (community_size - a - 1))
+                       else:
+                           G.add_edge(start_i + a, start_j + a)
+       
+       return G
 
-    def _generate_approx_circulant(self, params: GraphParams) -> nx.Graph:
-        """Generate approximately circulant graph"""
-        G = nx.Graph()
-        G.add_nodes_from(range(params.n))
-        
-        # Add base circulant structure
-        for i in range(params.n):
-            for j in range(1, params.k_neighbors + 1):
-                if params.periodic:
-                    G.add_edge(i, (i + j) % params.n)
-                    G.add_edge(i, (i - j) % params.n)
-                else:
-                    if i + j < params.n:
-                        G.add_edge(i, i + j)
-                    if i - j >= 0:
-                        G.add_edge(i, i - j)
-        
-        # Add perturbations
-        if params.perturbation_prob:
-            for i in range(params.n):
-                for j in range(i + 1, params.n):
-                    if np.random.random() < params.perturbation_prob:
-                        if G.has_edge(i, j):
-                            G.remove_edge(i, j)
-                        else:
-                            G.add_edge(i, j)
-        
-        return G
+   def _generate_approx_circulant(self, params: GraphParams) -> nx.Graph:
+       G = nx.Graph()
+       G.add_nodes_from(range(params.n))
+       
+       for i in range(params.n):
+           for j in range(1, params.k_neighbors + 1):
+               if params.periodic:
+                   G.add_edge(i, (i + j) % params.n)
+                   G.add_edge(i, (i - j) % params.n)
+               else:
+                   if i + j < params.n:
+                       G.add_edge(i, i + j)
+                   if i - j >= 0:
+                       G.add_edge(i, i - j)
+       
+       if params.perturbation_prob:
+           for i in range(params.n):
+               for j in range(i + 1, params.n):
+                   if np.random.random() < params.perturbation_prob:
+                       if G.has_edge(i, j):
+                           G.remove_edge(i, j)
+                       else:
+                           G.add_edge(i, j)
+       
+       return G
 
-    def _generate_local_banded(self, params: GraphParams) -> nx.Graph:
-        """Generate locally connected graph with natural banding"""
-        G = nx.Graph()
-        G.add_nodes_from(range(params.n))
-        
-        # Use distance-based probability for connections
-        for i in range(params.n):
-            # make minimum connections
-            connected = 0
-            while connected < params.min_connections:
-                # Sample potential neighbors based on distance
-                for j in range(params.n):
-                    if i != j:
-                        distance = min(abs(i - j), params.n - abs(i - j)) if params.periodic else abs(i - j)
-                        prob = np.exp(-distance * params.distance_decay)
-                        if np.random.random() < prob:
-                            G.add_edge(i, j)
-                            connected += 1
-                            if connected >= params.min_connections:
-                                break
-        
-        return G
+   def _generate_local_banded(self, params: GraphParams) -> nx.Graph:
+       G = nx.Graph()
+       G.add_nodes_from(range(params.n))
+       
+       for i in range(params.n):
+           connected = 0
+           while connected < params.min_connections:
+               for j in range(params.n):
+                   if i != j:
+                       distance = min(abs(i - j), params.n - abs(i - j)) if params.periodic else abs(i - j)
+                       prob = np.exp(-distance * params.distance_decay)
+                       if np.random.random() < prob:
+                           G.add_edge(i, j)
+                           connected += 1
+                           if connected >= params.min_connections:
+                               break
+       
+       return G
 
-    def _generate_hierarchical(self, params: GraphParams) -> nx.Graph:
-        """Generate hierarchical graph combining multiple types"""
-        # Start with a base graph (e.g., path communities)
-        base_params = GraphParams(
-            n=params.n,
-            graph_type=GraphType.PATH_COMMUNITY,
-            num_communities=params.num_communities,
-            inter_community_prob=params.inter_community_prob
-        )
-        G = self._generate_path_community(base_params)
-        
-        # Add circulant structure within communities
-        if params.k_neighbors:
-            community_size = params.n // params.num_communities
-            for c in range(params.num_communities):
-                start = c * community_size
-                for i in range(start, start + community_size):
-                    for j in range(1, params.k_neighbors + 1):
-                        node2 = start + ((i - start + j) % community_size)
-                        if np.random.random() < 0.5:  # Random mixing of structures
-                            G.add_edge(i, node2)
-        
-        return G
+   def _generate_hierarchical(self, params: GraphParams) -> nx.Graph:
+       base_params = GraphParams(
+           n=params.n,
+           graph_type=GraphType.PATH_COMMUNITY,
+           num_communities=params.num_communities,
+           inter_community_prob=params.inter_community_prob
+       )
+       G = self._generate_path_community(base_params)
+       
+       if params.k_neighbors:
+           community_size = params.n // params.num_communities
+           for c in range(params.num_communities):
+               start = c * community_size
+               for i in range(start, start + community_size):
+                   for j in range(1, params.k_neighbors + 1):
+                       node2 = start + ((i - start + j) % community_size)
+                       if np.random.random() < 0.5:
+                           G.add_edge(i, node2)
+       
+       return G
 
-    def _make_connectivity(self, G: nx.Graph):
-        """make graph is connected by adding minimum necessary edges"""
-        components = list(nx.connected_components(G))
-        while len(components) > 1:
-            c1 = random.choice(list(components[0]))
-            c2 = random.choice(list(components[1]))
-            G.add_edge(c1, c2)
-            components = list(nx.connected_components(G))
+   def _generate_multi_scale(self, params: GraphParams) -> nx.Graph:
+       G = nx.Graph()
+       G.add_nodes_from(range(params.n))
+       
+       for i in range(params.n):
+           for j in range(i + 1, params.n):
+               total_prob = 0
+               for width, strength in zip(params.scale_widths, params.scale_strengths):
+                   distance = min(abs(i - j), params.n - abs(i - j)) if params.periodic else abs(i - j)
+                   total_prob += strength * np.exp(-distance/width)
+               
+               if np.random.random() < total_prob:
+                   G.add_edge(i, j)
+       
+       return G
+
+   def _generate_diffusion(self, params: GraphParams) -> nx.Graph:
+       G = nx.Graph()
+       G.add_nodes_from(range(params.n))
+       
+       sources = random.sample(range(params.n), params.num_sources)
+       
+       for i in range(params.n):
+           for j in range(i + 1, params.n):
+               max_influence = 0
+               for source in sources:
+                   dist_i = min(abs(i - source), params.n - abs(i - source)) if params.periodic else abs(i - source)
+                   dist_j = min(abs(j - source), params.n - abs(j - source)) if params.periodic else abs(j - source)
+                   influence = params.diffusion_strength * np.exp(-(dist_i + dist_j)/(2*params.diffusion_length))
+                   max_influence = max(max_influence, influence)
+               
+               if np.random.random() < max_influence:
+                   G.add_edge(i, j)
+       
+       return G
+
+   def _make_connectivity(self, G: nx.Graph):
+       components = list(nx.connected_components(G))
+       while len(components) > 1:
+           c1 = random.choice(list(components[0]))
+           c2 = random.choice(list(components[1]))
+           G.add_edge(c1, c2)
+           components = list(nx.connected_components(G))
 
 def generate_training_data(num_samples: int, min_nodes: int = 100, max_nodes: int = 1000) -> List[Tuple[np.ndarray, GraphParams]]:
-    """Generate diverse training data with varied parameters"""
-    generator = LaplacianGenerator()
-    samples = []
-    
-    with tqdm(total=num_samples, desc="Generating samples") as pbar:
-        for i in range(num_samples):
-            pbar.set_description(f"Generating sample {i+1}/{num_samples}")
-            
-            params = generator.generate_random_params(min_nodes, max_nodes)
-            print(f"\nGenerating {params.graph_type.value} graph with {params.n} nodes...")
-            L, _ = generator.generate(params)
-            samples.append((L, params))
-            
-            pbar.update(1)
-            percentage = ((i + 1) / num_samples) * 100
-            pbar.set_postfix({"Completed": f"{percentage:.1f}%"})
-    
-    return samples
+   generator = LaplacianGenerator()
+   samples = []
+   
+   with tqdm(total=num_samples, desc="Generating samples") as pbar:
+       for i in range(num_samples):
+           pbar.set_description(f"Generating sample {i+1}/{num_samples}")
+           
+           params = generator.generate_random_params(min_nodes, max_nodes)
+           print(f"\nGenerating {params.graph_type.value} graph with {params.n} nodes...")
+           L, _ = generator.generate(params)
+           samples.append((L, params))
+           
+           pbar.update(1)
+           percentage = ((i + 1) / num_samples) * 100
+           pbar.set_postfix({"Completed": f"{percentage:.1f}%"})
+   
+   return samples
 
 
 def visualize_matrices(samples, num_display=5):
@@ -343,7 +378,6 @@ def visualize_matrices(samples, num_display=5):
             print(f"  Perturbation prob: {params.perturbation_prob:.3f}")
         if params.distance_decay:
             print(f"  Distance decay: {params.distance_decay:.3f}")
-
 
 def main():
     # Generate sample dataset

@@ -290,17 +290,27 @@ def visualize_matrices(samples, num_display=5):
     if num_display == 1:
         axes = [axes]
     
-    # Custom colormap
+    # Create vibrant colormap with narrow black band for zero
+    colors = [
+        '#0000FF',  # Vibrant blue
+        '#000080',  # Dark blue
+        '#000000',  # Black for zero
+        '#800000',  # Dark red
+        '#FF0000'   # Vibrant red
+    ]
+    # Position the colors to create narrow black band
+    positions = [0, 0.49, 0.5, 0.51, 1]
     cmap = mcolors.LinearSegmentedColormap.from_list('custom', 
-        ['blue', 'black', 'red'], N=256)
+        list(zip(positions, colors)), N=256)
     
     for idx, (ax, (L, params)) in enumerate(zip(axes, display_samples)):
         # Normalize matrix values
         vmax = max(abs(L.min()), abs(L.max()))
         
-        # Plot matrix
-        im = ax.imshow(L, cmap=cmap, aspect='equal', 
-                      vmin=-vmax, vmax=vmax)
+        # Plot matrix with high contrast
+        im = ax.imshow(L, cmap=cmap, aspect='equal',
+                      vmin=-vmax, vmax=vmax,
+                      norm=mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax))
         
         # Add title with parameters
         title = f"Type: {params.graph_type.value}\n"

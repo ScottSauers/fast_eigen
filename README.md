@@ -19,7 +19,7 @@ Storage organization:
 - Main diagonal: Full length N vector
 - First off-diagonal: Length N-1 vector
 - k-th off-diagonal: Length N-k vector
-- Total storage: b+1 vectors of decreasing length
+- Total storage: Dynamically determined (bandedness)
 
 ## Neural Architecture
 

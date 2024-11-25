@@ -42,7 +42,6 @@ Input processing:
 
 Structural preservation:
 - ReLU-based activation functions preserving non-negativity
-- Position encoding capturing bandwidth structure
 - Skip connections maintaining direct pathways
 - Integer relationship preservation through specialized layers
 
@@ -51,10 +50,25 @@ Structural preservation:
 The fusion network processes band-limited features while maintaining strict structural properties. Input consists of b+1 feature maps with dimensions scaled to preserve necessary information capacity.
 
 Key operations:
-1. Hierarchical feature aggregation respecting bandwidth
-2. Structure-preserving transformations maintaining Laplacian properties
-3. Multi-head attention mechanisms operating within b-width
-4. Parallel processing of independent components
+1. Feature map encoding:
+   - Each of the b+1 diagonals represented by length-N feature maps
+   - Channel depth varies by diagonal importance (64/32/16)
+   - Positional encoding indicates diagonal index (0 to b) to maintain band structure awareness
+
+2. Multi-head attention mechanism:
+   - Processes relationships between diagonal feature maps
+   - Attention weights learn band-structure importance
+   - Each head can specialize in different diagonal interactions
+
+3. Structure-preserving transformations:
+   - Maintains feature dimensionality for N×N output reconstruction
+   - Preserves band-limited nature of input
+   - Retains necessary information for eigendecomposition
+
+4. Parallel processing:
+   - Simultaneous computation across all diagonal feature maps
+   - Efficient batch processing of multiple matrices
+   - GPU-optimized attention operations
 
 Output characteristics:
 - Adaptive dimension feature matrices based on N and b

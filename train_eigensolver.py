@@ -103,9 +103,6 @@ class FusionNetwork(nn.Module):
         self.N = N
         self.b = b
         
-        # Calculate total channels
-        self.total_channels = 64 + 32 * 3 + 16 * (b-3) if b > 3 else 64 + 32 * b
-        
         # Project all features to a common dimension before attention
         self.projections = nn.ModuleList()
         for k in range(b+1):
@@ -124,6 +121,8 @@ class FusionNetwork(nn.Module):
     def forward(self, features):
         # Project each feature to common dimension
         projected_features = []
+        batch_size = features[0].size(0)
+        
         for k, feat in enumerate(features):
             feat = feat.permute(0, 2, 1)  # [B, N, C]
             projected = self.projections[k](feat)  # [B, N, 64]
@@ -131,21 +130,27 @@ class FusionNetwork(nn.Module):
             
         # Combine features
         combined = torch.stack(projected_features, dim=2)  # [B, N, b+1, 64]
+        
+        # Reshape for attention: [b+1, B*N, 64]
         combined = combined.permute(2, 0, 1, 3)  # [b+1, B, N, 64]
+        combined = combined.reshape(self.b+1, -1, 64)  # [b+1, B*N, 64]
         
         # Apply attention
         attn_outputs = []
         for attn_head in self.attention_heads:
-            attn_output, _ = attn_head(combined.view(-1, combined.size(2), 64),
-                                     combined.view(-1, combined.size(2), 64),
-                                     combined.view(-1, combined.size(2), 64))
+            attn_output, _ = attn_head(combined, combined, combined)  # [b+1, B*N, 64]
+            # Reshape back: [B*N, 64]
+            attn_output = attn_output.mean(dim=0)
             attn_outputs.append(attn_output)
             
         # Combine attention outputs
-        attn_outputs_concat = torch.cat(attn_outputs, dim=-1)
-        output = torch.relu(self.linear(attn_outputs_concat))
+        attn_outputs_concat = torch.cat(attn_outputs, dim=-1)  # [B*N, 64*num_heads]
+        output = torch.relu(self.linear(attn_outputs_concat))  # [B*N, 64]
         
-        return output.permute(1, 2, 0)  # [B, C, N]
+        # Reshape back to [B, N, 64]
+        output = output.reshape(batch_size, self.N, 64)
+        
+        return output.permute(0, 2, 1)  # [B, 64, N]
 
 class EigenDecompositionNetwork(nn.Module):
     def __init__(self, N):

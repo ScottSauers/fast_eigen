@@ -6,7 +6,6 @@ The eigensolver operates on a specialized class of matrices derived from graph t
 
 Key matrix properties:
 - Matrix entries must be integer-valued
-- Maximum sparsity pattern of 2bN + N non-zero elements
 - Main diagonal contains positive integers representing vertex degrees
 - Off-diagonal elements are constrained to {-1, 0}
 - Row sums equal zero (Laplacian property)
@@ -22,104 +21,118 @@ Storage organization:
 - k-th off-diagonal: Length N-k vector
 - Total storage: b+1 vectors of decreasing length
 
-The system exploits several fundamental mathematical properties that enhance both accuracy and efficiency. Eigenvalues exhibit interlacing relationships between principal submatrices, providing valuable constraints for the neural architecture. The bandwidth remains preserved under orthogonal transformations, allowing for consistent processing throughout the network. The trace of the matrix equals both the sum of eigenvalues and the sum of diagonal entries, providing important validation checks.
-
 ## Neural Architecture
 
 ### Band-Limited Encoder Network
 
-The encoder represents a significant departure from traditional architectures by implementing a narrow-channel approach. Each diagonal receives specialized processing through dedicated convolutional paths with strictly limited dimensions.
+The encoder implements a parallel processing approach optimized for GPU computation. Each diagonal receives specialized processing through dedicated convolutional paths with dimensions scaled to preserve necessary information capacity.
 
 Channel architecture:
-- Main diagonal: 1→16 channels (primary information carrier)
-- First three off-diagonals: 1→8 channels
-- Remaining diagonals: 1→4 channels
+- Main diagonal: 1→64 channels (primary information carrier)
+- First three off-diagonals: 1→32 channels
+- Remaining diagonals: 1→16 channels
 
-This dramatic reduction in channel width, compared to traditional architectures using hundreds of channels, maintains essential structural information while significantly reducing computational complexity. All convolutional kernels employ a fixed size of min(b,5), ensuring operations remain strictly within the banded structure.
+This channel structure ensures sufficient capacity for eigenspace information while maintaining computational efficiency. All convolutional kernels employ a fixed size of min(b,5), ensuring operations remain strictly within the banded structure.
 
-Input processing remains bandwidth-aware:
+Input processing:
 - Main diagonal: Processes full length N
 - k-th diagonal: Natural length N-k
 - No padding or artificial extension
-
-The network preserves structural integrity through specialized components:
-- Integer-aware activation functions maintain value relationships
-- Position encoding captures location within bandwidth
-- Skip connections preserve direct structural pathways
 - Parallel processing of all diagonals on GPU
-- Zero row sum constraint maintenance
 
-### Band-Aware Fusion Network
+Structural preservation:
+- ReLU-based activation functions preserving non-negativity
+- Position encoding capturing bandwidth structure
+- Skip connections maintaining direct pathways
+- Zero row sum constraints actively enforced
+- Integer relationship preservation through specialized layers
 
-The fusion network processes band-limited features while maintaining strict structural properties. Input consists of b+1 feature maps, each with maximum dimension 16, representing a significant reduction from traditional architectures using 256 or more features. 
+### Fusion Network
 
-The network performs three key operations:
-1. Local feature grouping respecting bandwidth constraints
-2. Structure-preserving merge operations maintaining Laplacian properties
-3. Band-limited attention mechanisms operating within b-width
+The fusion network processes band-limited features while maintaining strict structural properties. Input consists of b+1 feature maps with dimensions scaled to preserve necessary information capacity.
+
+Key operations:
+1. Hierarchical feature aggregation respecting bandwidth
+2. Structure-preserving transformations maintaining Laplacian properties
+3. Multi-head attention mechanisms operating within b-width
+4. Parallel processing of independent components
 
 Output characteristics:
-- 32×b feature matrix (reduced from traditional 512×N)
+- Adaptive dimension feature matrices based on N and b
 - Preserved zero row sum property
-- Maintained bandwidth structure
-- Conserved integer relationships
+- Maintained structural constraints
+- Integer relationship preservation
 
 ### Direct Eigendecomposition Network
 
-The system implements direct eigendecomposition through a band-limited approach, avoiding the traditional costly expansion to N×N dimensions. This network processes the 32×b feature matrix to produce eigenvalues and eigenvectors simultaneously.
+The system implements parallel eigendecomposition while maintaining all required constraints. This network processes the feature matrices to produce all N eigenvalues and N eigenvectors simultaneously.
 
-Structural constraints enforced during computation:
+Structural constraints:
 - Non-negativity of eigenvalues
-- Orthogonality of eigenvectors
-- Bandwidth preservation
-- Integer relationship maintenance
+- Orthogonality of eigenvectors enforcement
 
 ## Training Protocol
 
-The training process implements a multi-objective optimization targeting structural preservation and accuracy. Each component of the loss function specifically addresses key matrix properties.
+Multi-objective optimization targeting both accuracy and structural preservation:
 
 Loss function weighting:
 1. Eigenvalue Accuracy (0.35)
    - Direct MSE with structure preservation
    - Trace consistency enforcement
+   - Known eigenvalue bound satisfaction
+   - Zero eigenvalue preservation
    - Multiplicity preservation
-   - Band-aware error weighting
 
 2. Eigenvector Quality (0.35)
-   - Orthogonality constraints
-   - Zero row sum preservation
-   - Bandwidth locality maintenance
-   - Integer relationship preservation
+   - Orthogonality
+   - Accuracy
 
 3. Structural Integrity (0.30)
    - Laplacian property preservation
-   - Integer constraints satisfaction
-   - Bandwidth preservation
-   - Component preservation
+   - Integer relationship preservation
+   - Component-wise accuracy
+   - Trace preservation
 
-Implementation specifications:
-- Optimizer: AdamW with cosine learning rate schedule
-- Mixed precision training utilizing FP16/BF16
-- Gradient clipping maintaining norm preservation
-- Early stopping based on structural criteria
+Implementation:
+- AdamW optimizer with cosine schedule
+- Mixed precision (FP16/BF16) training
+- Gradient clipping preserving constraints
+- Early stopping on validation metrics
+- Batch processing optimization
 
 ## Performance Specifications
 
-The band-limited architecture achieves significant computational improvements over traditional approaches.
-
-Computational complexity:
-- Encoding: O(b²) operations
-- Eigendecomposition: O(bN) operations
-- Memory utilization: O(bN) peak
-- Batch processing: O(Kb²) for K matrices
+Computational complexity (for N×N matrix, bandwidth b):
+- Single matrix processing: O(N²) operations (output bound)
+- Batch processing K matrices: O(N²) operations total
+- Memory utilization: O(N²) peak (output bound)
+- Storage requirement: O(bN) per input matrix
 
 Accuracy targets:
 - Eigenvalue relative error: 1e-6
 - Eigenvector orthogonality: 1e-6
-- Integer preservation: Exact
-- Structure preservation: Exact
+- Zero eigenvalue preservation: Exact
+- Integer relationship preservation: Exact
+- Trace preservation: Exact
+
+Performance advantages:
+1. Batch Processing
+   - Process K matrices in parallel
+   - Amortized cost O(N²/K) per matrix
+   - Optimal GPU tensor core utilization
+
+2. Precision Targeting
+   - Consistent 10⁻⁶ accuracy
+   - Avoid unnecessary precision overhead
+   - Maintain essential properties exactly
+
+3. Hardware Optimization
+   - Full GPU utilization
+   - Mixed precision acceleration
+   - Optimized memory access patterns
+   - Parallel eigenvector computation
 
 Hardware requirements:
-- GPU: CUDA-capable device
-- Memory scaling with bN
-- Storage requirement of O(bN) per matrix
+- CUDA-capable GPU
+- Memory scaling with max(O(bN), O(N²))
+- High-bandwidth memory preferred

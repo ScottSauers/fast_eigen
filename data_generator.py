@@ -191,10 +191,7 @@ class LaplacianGenerator:
                            sum(community_sizes[:i]),
                            sum(community_sizes[:i+1]) - 1
                        )
-                       target = random.randint(
-                           sum(community_sizes[:j]),
-                           sum(community_sizes[:j+1]) - 1
-                       )
+                       target = random.randint(sum(community_sizes[:j]), max(sum(community_sizes[:j+1]) - 1, sum(community_sizes[:j])))
                        G.add_edge(source, target)
        
        return G

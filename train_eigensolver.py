@@ -69,26 +69,15 @@ class LaplacianDataset(Dataset):
         return L, eigenvalues, eigenvectors
 
 class BandLimitedEncoder(nn.Module):
-    def __init__(self, N, b):
+    def __init__(self, N):
         super(BandLimitedEncoder, self).__init__()
         self.N = N
-        self.b = b
-
-        # Create separate convolutional paths for each diagonal as per spec:
-        # - Main diagonal (k=0): 1→64 channels
-        # - First three off-diagonals (k=1,2,3): 1→32 channels 
-        # - Remaining diagonals (k>3): 1→16 channels
-        self.convs = nn.ModuleList()
-        kernel_size = min(b,5)
+        self.kernel_size = 5
         
-        for k in range(b+1):
-            if k == 0:  # Main diagonal
-                conv = nn.Conv1d(1, 64, kernel_size=kernel_size, padding=kernel_size//2)
-            elif k <= 3:  # First three off-diagonals
-                conv = nn.Conv1d(1, 32, kernel_size=kernel_size, padding=kernel_size//2)
-            else:  # Remaining diagonals
-                conv = nn.Conv1d(1, 16, kernel_size=kernel_size, padding=kernel_size//2)
-            self.convs.append(conv)
+        # Create prototype convolutions
+        self.conv_main = nn.Conv1d(1, 64, kernel_size=self.kernel_size, padding=self.kernel_size//2)
+        self.conv_first3 = nn.Conv1d(1, 32, kernel_size=self.kernel_size, padding=self.kernel_size//2)
+        self.conv_rest = nn.Conv1d(1, 16, kernel_size=self.kernel_size, padding=self.kernel_size//2)
             
     def forward(self, diagonals):
         features = []
@@ -117,15 +106,6 @@ class FusionNetwork(nn.Module):
         for k in range(b+1):
             in_channels = 64 if k == 0 else (32 if k <= 3 else 16)
             self.projections.append(nn.Linear(in_channels, 64))
-            
-        # Multi-head attention layers
-        self.attention_heads = nn.ModuleList()
-        num_heads = 4
-        for _ in range(num_heads):
-            attn_head = nn.MultiheadAttention(embed_dim=64, num_heads=1, dropout=0.1)
-            self.attention_heads.append(attn_head)
-        
-        self.linear = nn.Linear(64*num_heads, 64)
 
     def forward(self, features):
         # Project each feature to common dimension
@@ -190,13 +170,11 @@ class EigenDecompositionNetwork(nn.Module):
         return eigenvalues, eigenvectors
 
 class EigensolverModel(nn.Module):
-    def __init__(self, N, b):
+    def __init__(self, N):
         super(EigensolverModel, self).__init__()
         self.N = N
-        self.b = b
-        self.encoder = BandLimitedEncoder(N, b)
-        self.fusion = FusionNetwork(N, b)
-        self.decoder = EigenDecompositionNetwork(N)
+        self.encoder = BandLimitedEncoder(N)
+        self.fusion = FusionNetwork(N)
 
     def forward(self, diagonals):
         # Encode the diagonals
@@ -389,7 +367,7 @@ def main():
     sample_L, _, _ = full_dataset[0]
     N = sample_L.size(0)
 
-    model = EigensolverModel(N, args.bandwidth).to(device)
+    model = EigensolverModel(N).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=1e-3)
     scheduler = CosineAnnealingLR(optimizer, T_max=len(train_loader)*args.epochs)
 

@@ -2,7 +2,7 @@
 
 ## Input Specifications
 
-The eigensolver operates on a specialized class of matrices derived from graph theory. These matrices must be symmetric Laplacian matrices that originate from undirected, locally connected graphs. The system processes matrices of dimension N×N, where the bandwidth parameter b defines the count of non-zero diagonals above the main diagonal.
+The eigensolver operates on a specialized class of matrices derived from graph theory. These matrices must be symmetric Laplacian matrices that originate from undirected, locally connected graphs. The system processes matrices of dimension N×N. The matrix bandwidth (count of non-zero diagonals above the main diagonal) is determined dynamically from the input matrix structure, allowing the system to handle varying bandwidths without predefined limits.
 
 Key matrix properties:
 - Matrix entries must be integer-valued

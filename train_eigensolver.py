@@ -69,25 +69,33 @@ class LaplacianDataset(Dataset):
         return L, eigenvalues, eigenvectors
 
 class BandLimitedEncoder(nn.Module):
-    def __init__(self, N):
+    def __init__(self, N, max_channels=64):
         super(BandLimitedEncoder, self).__init__()
         self.N = N
-        self.kernel_size = 5
+        self.max_channels = max_channels
         
-        # Create prototype convolutions
-        self.conv_main = nn.Conv1d(1, 64, kernel_size=self.kernel_size, padding=self.kernel_size//2)
-        self.conv_first3 = nn.Conv1d(1, 32, kernel_size=self.kernel_size, padding=self.kernel_size//2)
-        self.conv_rest = nn.Conv1d(1, 16, kernel_size=self.kernel_size, padding=self.kernel_size//2)
+        # Create prototype convolutions - will be reused for all diagonals
+        self.conv_main = nn.Conv1d(1, max_channels, kernel_size=5, padding=2)
+        self.conv_near = nn.Conv1d(1, max_channels//2, kernel_size=5, padding=2)
+        self.conv_far = nn.Conv1d(1, max_channels//4, kernel_size=5, padding=2)
             
     def forward(self, diagonals):
         features = []
         for k, diag in enumerate(diagonals):
             # Process each diagonal without padding to its natural length N-k
             diag = diag.unsqueeze(1)  # Add channel dimension
-            conv = self.convs[k]
-            feat = torch.relu(conv(diag))  # ReLU to preserve non-negativity
             
-            # Pad all features to match the largest feature map size
+            # Select appropriate convolution based on diagonal position
+            if k == 0:
+                conv = self.conv_main  # Main diagonal gets full channels
+            elif k <= 3:
+                conv = self.conv_near  # Near diagonals get half channels
+            else:
+                conv = self.conv_far   # Far diagonals get quarter channels
+                
+            feat = torch.relu(conv(diag))
+            
+            # Handle different diagonal lengths naturally
             if k > 0:
                 pad_size = diagonals[0].size(-1) - diag.size(-1)
                 feat = torch.nn.functional.pad(feat, (0, pad_size))
@@ -96,50 +104,55 @@ class BandLimitedEncoder(nn.Module):
         return features
 
 class FusionNetwork(nn.Module):
-    def __init__(self, N, b):
+    def __init__(self, N, hidden_dim=64):
         super(FusionNetwork, self).__init__()
         self.N = N
-        self.b = b
+        self.hidden_dim = hidden_dim
         
-        # Project all features to a common dimension before attention
-        self.projections = nn.ModuleList()
-        for k in range(b+1):
-            in_channels = 64 if k == 0 else (32 if k <= 3 else 16)
-            self.projections.append(nn.Linear(in_channels, 64))
-
+        # Single projection that can handle any channel count
+        self.projection = nn.Linear(hidden_dim, hidden_dim)
+        
+        # Multi-head attention that can handle variable sequence lengths
+        self.attention = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=4,
+            batch_first=True
+        )
+        
     def forward(self, features):
-        # Project each feature to common dimension
-        projected_features = []
         batch_size = features[0].size(0)
         
-        for k, feat in enumerate(features):
+        # Project and prepare features
+        projected_features = []
+        for feat in features:
+            # Handle different channel counts
+            if feat.size(1) != self.hidden_dim:
+                feat = nn.functional.interpolate(
+                    feat, 
+                    size=(self.hidden_dim, feat.size(-1)),
+                    mode='bilinear',
+                    align_corners=False
+                )
             feat = feat.permute(0, 2, 1)  # [B, N, C]
-            projected = self.projections[k](feat)  # [B, N, 64]
-            projected_features.append(projected)
+            projected_features.append(self.projection(feat))
             
-        # Combine features
-        combined = torch.stack(projected_features, dim=2)  # [B, N, b+1, 64]
+        # Stack features for attention
+        # Shape: [B, num_diagonals, N, hidden_dim]
+        combined = torch.stack(projected_features, dim=1)
         
-        # Reshape for attention: [b+1, B*N, 64]
-        combined = combined.permute(2, 0, 1, 3)  # [b+1, B, N, 64]
-        combined = combined.reshape(self.b+1, -1, 64)  # [b+1, B*N, 64]
+        # Reshape for attention
+        combined = combined.view(-1, combined.size(-2), combined.size(-1))
         
-        # Apply attention
-        attn_outputs = []
-        for attn_head in self.attention_heads:
-            attn_output, _ = attn_head(combined, combined, combined)  # [b+1, B*N, 64]
-            # Reshape back: [B*N, 64]
-            attn_output = attn_output.mean(dim=0)
-            attn_outputs.append(attn_output)
-            
-        # Combine attention outputs
-        attn_outputs_concat = torch.cat(attn_outputs, dim=-1)  # [B*N, 64*num_heads]
-        output = torch.relu(self.linear(attn_outputs_concat))  # [B*N, 64]
+        # Apply attention - handles variable sequence lengths automatically
+        attn_output, _ = self.attention(combined, combined, combined)
         
-        # Reshape back to [B, N, 64]
-        output = output.reshape(batch_size, self.N, 64)
+        # Reshape back
+        output = attn_output.view(batch_size, len(features), self.N, -1)
         
-        return output.permute(0, 2, 1)  # [B, 64, N]
+        # Pool across diagonals
+        output = output.mean(dim=1)  # [B, N, hidden_dim]
+        
+        return output.permute(0, 2, 1)  # [B, hidden_dim, N]
 
 class EigenDecompositionNetwork(nn.Module):
     def __init__(self, N):

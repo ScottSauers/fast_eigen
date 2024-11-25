@@ -137,63 +137,73 @@ class LaplacianGenerator:
        L = nx.laplacian_matrix(G).toarray()
        return L, G
 
+   
    def _generate_path_community(self, params: GraphParams) -> nx.Graph:
        G = nx.Graph()
-       
-       # Generate variable-sized communities using power law distribution
+   
+       # Randomly shuffle node IDs to avoid index-based structure
+       all_nodes = list(range(params.n))
+       random.shuffle(all_nodes)
+   
+       # Generate variable-sized communities using a random distribution
+       remaining_nodes = all_nodes[:]
        community_sizes = []
-       remaining_nodes = params.n
-       alpha = 2.5  # Power law exponent
-       
-       for i in range(params.num_communities - 1):
-           size = max(5, int(remaining_nodes * random.random() ** alpha))
+       alpha = random.uniform(2.0, 3.0)  # Add variation to the power law exponent
+   
+       for _ in range(params.num_communities - 1):
+           if len(remaining_nodes) <= 5:  # Ensure we don't over-sample
+               break
+           size = max(5, min(int(len(remaining_nodes) * random.random() ** alpha), len(remaining_nodes)))
            community_sizes.append(size)
-           remaining_nodes -= size
-       community_sizes.append(remaining_nodes)
-       
+           remaining_nodes = remaining_nodes[size:]
+       community_sizes.append(len(remaining_nodes))  # Include remaining nodes
+   
        # Create communities with internal structure
-       current_node = 0
+       used_nodes = set()
        community_centers = []
-       
+   
        for size in community_sizes:
-           # Create dense core and sparse periphery
-           core_size = max(3, size // 4)
-           core_nodes = range(current_node, current_node + core_size)
-           periphery_nodes = range(current_node + core_size, current_node + size)
-           
-           # Create dense core
+           size = min(size, len(all_nodes))  # Clamp size to available nodes
+           community_nodes = random.sample(all_nodes, size)
+           all_nodes = [node for node in all_nodes if node not in community_nodes]
+           core_size = max(3, int(size * random.uniform(0.1, 0.3)))  # Variable core size
+           core_size = min(core_size, len(community_nodes))  # Ensure core size is valid
+           core_nodes = community_nodes[:core_size]
+           periphery_nodes = community_nodes[core_size:]
+   
+           # Create a dense core with randomized connectivity
            for i in core_nodes:
                for j in core_nodes:
-                   if i < j and random.random() < 0.8:
+                   if i != j and random.random() < random.uniform(0.7, 0.9):
                        G.add_edge(i, j)
-           
-           # Connect periphery to core with decreasing probability
-           for i in periphery_nodes:
-               center = random.choice(list(core_nodes))
-               G.add_edge(i, center)
-               for j in core_nodes:
-                   if random.random() < 0.3:
-                       G.add_edge(i, j)
-           
-           community_centers.append(random.choice(list(core_nodes)))
-           current_node += size
-       
-       # Inter-community connections with distance-based probability
+   
+           # Connect periphery nodes to the core with random probabilities
+           for node in periphery_nodes:
+               if core_nodes:
+                   center = random.choice(core_nodes)
+                   G.add_edge(node, center)
+                   for core_node in core_nodes:
+                       if random.random() < random.uniform(0.2, 0.5):
+                           G.add_edge(node, core_node)
+   
+           # Select a random center node for inter-community connections
+           if core_nodes:
+               community_centers.append(random.choice(core_nodes))
+           used_nodes.update(community_nodes)
+   
+       # Add inter-community connections based on distance
        for i, center1 in enumerate(community_centers):
-           for j, center2 in enumerate(community_centers[i+1:], i+1):
+           for j, center2 in enumerate(community_centers[i + 1:], i + 1):
                distance = abs(i - j)
-               prob = params.inter_community_prob * np.exp(-distance / 2)
+               prob = params.inter_community_prob * random.uniform(0.5, 1.5) * np.exp(-distance / random.uniform(1.5, 3.0))
                if random.random() < prob:
-                   # Create multiple bridges between communities
                    num_bridges = random.randint(1, 3)
                    for _ in range(num_bridges):
-                       source = random.randint(
-                           sum(community_sizes[:i]),
-                           sum(community_sizes[:i+1]) - 1
-                       )
-                       target = random.randint(sum(community_sizes[:j]), max(sum(community_sizes[:j+1]) - 1, sum(community_sizes[:j])))
-                       G.add_edge(source, target)
-       
+                       if used_nodes:
+                           source = random.choice(list(used_nodes))
+                           target = random.choice(list(used_nodes))
+                           G.add_edge(source, target)
+   
        return G
 
    def _generate_circulant_community(self, params: GraphParams) -> nx.Graph:

@@ -276,7 +276,6 @@ def generate_training_data(num_samples: int, min_nodes: int = 100, max_nodes: in
     return samples
 
 
-
 def visualize_matrices(samples, num_display=5):
     """Visualize random selection of generated Laplacian matrices"""
     if len(samples) < num_display:
@@ -307,10 +306,11 @@ def visualize_matrices(samples, num_display=5):
         # Normalize matrix values
         vmax = max(abs(L.min()), abs(L.max()))
         
+        # Create norm separately
+        norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax)
+        
         # Plot matrix with high contrast
-        im = ax.imshow(L, cmap=cmap, aspect='equal',
-                      vmin=-vmax, vmax=vmax,
-                      norm=mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax))
+        im = ax.imshow(L, cmap=cmap, aspect='equal', norm=norm)
         
         # Add title with parameters
         title = f"Type: {params.graph_type.value}\n"
@@ -343,6 +343,7 @@ def visualize_matrices(samples, num_display=5):
             print(f"  Perturbation prob: {params.perturbation_prob:.3f}")
         if params.distance_decay:
             print(f"  Distance decay: {params.distance_decay:.3f}")
+
 
 def main():
     # Generate sample dataset

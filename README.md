@@ -31,6 +31,7 @@ Channel architecture:
 - Main diagonal: 1→64 channels (primary information carrier)
 - First three off-diagonals: 1→32 channels
 - Remaining diagonals: 1→16 channels
+- Or use same channels (64) for all diagonals?
 
 This channel structure ensures sufficient capacity for eigenspace information while maintaining computational efficiency. All convolutional kernels employ a fixed size of min(b,5), ensuring operations remain strictly within the banded structure.
 

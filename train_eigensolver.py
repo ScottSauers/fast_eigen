@@ -213,11 +213,13 @@ class EigensolverModel(nn.Module):
         
         return eigenvalues, eigenvectors
 
-def extract_diagonals(L, b):
+def extract_diagonals(L):
     diagonals = []
     N = L.size(1)
-    for k in range(b+1):
+    for k in range(N):
         diag_k = torch.stack([torch.diagonal(L[i], offset=k) for i in range(L.size(0))])
+        if torch.all(diag_k == 0):
+            break
         diagonals.append(diag_k)
     return diagonals
 
@@ -296,7 +298,7 @@ def train(model, train_loader, val_loader, optimizer, scheduler, start_epoch, ch
             if i % max(1, num_batches // 10) == 0 or i == num_batches -1:
                 avg_loss = running_loss / (i+1)
                 avg_metrics = {k: running_metrics[k]/(i+1) for k in running_metrics}
-                progress_desc = f"Epoch [{epoch+1}/{num_epochs}] Batch [{i+1}/{num_batches}]"
+                progress_desc = f"Epoch [{epoch+1}] Batch [{i+1}/{num_batches}]"
                 progress_desc += f" Loss: {avg_loss:.6f}"
                 for k, v in avg_metrics.items():
                     progress_desc += f", {k}: {v:.6f}"
@@ -357,8 +359,6 @@ def validate(model, val_loader):
 def main():
     parser = argparse.ArgumentParser(description="Train Eigensolver Neural Network.")
     parser.add_argument("--data_dir", type=str, default="data", help="Directory containing training data.")    
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training.")
-    parser.add_argument("--bandwidth", type=int, default=5, help="Bandwidth (b) of the matrices.")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory to save checkpoints.")
     parser.add_argument("--loss_history_file", type=str, default="loss_history.csv", help="File to save loss history.")
     args = parser.parse_args()
@@ -371,8 +371,20 @@ def main():
     val_size = total_size // 10
     train_size = total_size - val_size
     train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    def find_batch_size(sample_shape, max_batch=32):
+        batch_size = max_batch
+        while batch_size > 1:
+            try:
+                torch.cuda.empty_cache()
+                dummy = torch.randn(batch_size, *sample_shape, device=device)
+                return batch_size
+            except RuntimeError:
+                batch_size //= 2
+        return 1
+    
+    batch_size = find_batch_size(sample_L.shape)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
     sample_L, _, _ = full_dataset[0]
     N = sample_L.size(0)

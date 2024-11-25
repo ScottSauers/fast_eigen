@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Tuple, List
 import random
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+from tqdm import tqdm
 
 class GraphType(Enum):
     PATH_COMMUNITY = "path_community"

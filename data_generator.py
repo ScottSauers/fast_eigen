@@ -260,12 +260,21 @@ def generate_training_data(num_samples: int, min_nodes: int = 100, max_nodes: in
     generator = LaplacianGenerator()
     samples = []
     
-    for _ in range(num_samples):
-        params = generator.generate_random_params(min_nodes, max_nodes)
-        L, _ = generator.generate(params)
-        samples.append((L, params))
+    with tqdm(total=num_samples, desc="Generating samples") as pbar:
+        for i in range(num_samples):
+            pbar.set_description(f"Generating sample {i+1}/{num_samples}")
+            
+            params = generator.generate_random_params(min_nodes, max_nodes)
+            print(f"\nGenerating {params.graph_type.value} graph with {params.n} nodes...")
+            L, _ = generator.generate(params)
+            samples.append((L, params))
+            
+            pbar.update(1)
+            percentage = ((i + 1) / num_samples) * 100
+            pbar.set_postfix({"Completed": f"{percentage:.1f}%"})
     
     return samples
+
 
 
 def visualize_matrices(samples, num_display=5):

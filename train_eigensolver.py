@@ -251,12 +251,13 @@ def compute_loss(eigenvalues_pred, eigenvectors_pred, eigenvalues_true, eigenvec
 
     return total_loss, losses
 
-def train(model, train_loader, val_loader, optimizer, scheduler, start_epoch, num_epochs, checkpoint_dir, loss_history_file):
+def train(model, train_loader, val_loader, optimizer, scheduler, start_epoch, checkpoint_dir, loss_history_file):
     best_val_loss = float('inf')
     loss_history = []
 
-    for epoch in range(start_epoch, num_epochs):
-        print(f"\nEpoch {epoch+1}/{num_epochs}")
+    epoch = start_epoch
+    while True:
+        print(f"\nEpoch {epoch+1}")
         model.train()
         running_loss = 0.0
         running_metrics = {}
@@ -355,8 +356,7 @@ def validate(model, val_loader):
 
 def main():
     parser = argparse.ArgumentParser(description="Train Eigensolver Neural Network.")
-    parser.add_argument("--data_dir", type=str, default="data", help="Directory containing training data.")
-    parser.add_argument("--epochs", type=int, default=20, help="Number of training epochs.")
+    parser.add_argument("--data_dir", type=str, default="data", help="Directory containing training data.")    
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training.")
     parser.add_argument("--bandwidth", type=int, default=5, help="Bandwidth (b) of the matrices.")
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory to save checkpoints.")

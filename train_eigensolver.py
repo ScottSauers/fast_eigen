@@ -65,26 +65,35 @@ class BandLimitedEncoder(nn.Module):
         self.N = N
         self.b = b
 
+        # Create separate convolutional paths for each diagonal as per spec:
+        # - Main diagonal (k=0): 1→64 channels
+        # - First three off-diagonals (k=1,2,3): 1→32 channels 
+        # - Remaining diagonals (k>3): 1→16 channels
         self.convs = nn.ModuleList()
-        diag_channels = [64] + [32]*3 + [16]*(b-3)
         kernel_size = min(b,5)
+        
         for k in range(b+1):
-            in_channels = 1
-            if k == 0:
-                out_channels = 64
-            elif k < 4:
-                out_channels = 32
-            else:
-                out_channels = 16
-            conv = nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size//2)
+            if k == 0:  # Main diagonal
+                conv = nn.Conv1d(1, 64, kernel_size=kernel_size, padding=kernel_size//2)
+            elif k <= 3:  # First three off-diagonals
+                conv = nn.Conv1d(1, 32, kernel_size=kernel_size, padding=kernel_size//2)
+            else:  # Remaining diagonals
+                conv = nn.Conv1d(1, 16, kernel_size=kernel_size, padding=kernel_size//2)
             self.convs.append(conv)
-
+            
     def forward(self, diagonals):
         features = []
         for k, diag in enumerate(diagonals):
-            diag = diag.unsqueeze(1)
+            # Process each diagonal without padding to its natural length N-k
+            diag = diag.unsqueeze(1)  # Add channel dimension
             conv = self.convs[k]
-            feat = torch.relu(conv(diag))
+            feat = torch.relu(conv(diag))  # ReLU to preserve non-negativity
+            
+            # Pad all features to match the largest feature map size
+            if k > 0:
+                pad_size = diagonals[0].size(-1) - diag.size(-1)
+                feat = torch.nn.functional.pad(feat, (0, pad_size))
+            
             features.append(feat)
         return features
 
@@ -93,26 +102,50 @@ class FusionNetwork(nn.Module):
         super(FusionNetwork, self).__init__()
         self.N = N
         self.b = b
-
+        
+        # Calculate total channels
+        self.total_channels = 64 + 32 * 3 + 16 * (b-3) if b > 3 else 64 + 32 * b
+        
+        # Project all features to a common dimension before attention
+        self.projections = nn.ModuleList()
+        for k in range(b+1):
+            in_channels = 64 if k == 0 else (32 if k <= 3 else 16)
+            self.projections.append(nn.Linear(in_channels, 64))
+            
+        # Multi-head attention layers
         self.attention_heads = nn.ModuleList()
         num_heads = 4
         for _ in range(num_heads):
             attn_head = nn.MultiheadAttention(embed_dim=64, num_heads=1, dropout=0.1)
             self.attention_heads.append(attn_head)
+        
         self.linear = nn.Linear(64*num_heads, 64)
 
     def forward(self, features):
-        combined = torch.cat(features, dim=2)
-        combined = combined.permute(2, 0, 1)
-
+        # Project each feature to common dimension
+        projected_features = []
+        for k, feat in enumerate(features):
+            feat = feat.permute(0, 2, 1)  # [B, N, C]
+            projected = self.projections[k](feat)  # [B, N, 64]
+            projected_features.append(projected)
+            
+        # Combine features
+        combined = torch.stack(projected_features, dim=2)  # [B, N, b+1, 64]
+        combined = combined.permute(2, 0, 1, 3)  # [b+1, B, N, 64]
+        
+        # Apply attention
         attn_outputs = []
         for attn_head in self.attention_heads:
-            attn_output, _ = attn_head(combined, combined, combined)
+            attn_output, _ = attn_head(combined.view(-1, combined.size(2), 64),
+                                     combined.view(-1, combined.size(2), 64),
+                                     combined.view(-1, combined.size(2), 64))
             attn_outputs.append(attn_output)
-
-        attn_outputs_concat = torch.cat(attn_outputs, dim=2)
+            
+        # Combine attention outputs
+        attn_outputs_concat = torch.cat(attn_outputs, dim=-1)
         output = torch.relu(self.linear(attn_outputs_concat))
-        return output.permute(1, 2, 0)
+        
+        return output.permute(1, 2, 0)  # [B, C, N]
 
 class EigenDecompositionNetwork(nn.Module):
     def __init__(self, N):

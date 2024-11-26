@@ -356,72 +356,84 @@ class LaplacianGenerator:
        G = nx.Graph()
        G.add_nodes_from(range(params.n))
    
-       # Assign random positions to nodes in a 2D plane
-       positions = {i: (random.uniform(0, 1), random.uniform(0, 1)) for i in range(params.n)}
+       # Assign positions to nodes along a line with clustering tendencies
+       positions = {}
+       current_pos = 0.0
+       while len(positions) < params.n:
+           # Random step size to create clusters and varied spacing
+           step = random.expovariate(1.0) * random.choice([-1, 1]) * random.uniform(0.5, 1.5)
+           current_pos += step
+           positions[len(positions)] = current_pos
    
-       # Define multiple regions with different diffusion characteristics
+       # Normalize positions to range [0, 1] to avoid dependence on node index or total nodes
+       min_pos = min(positions.values())
+       max_pos = max(positions.values())
+       range_pos = max_pos - min_pos if max_pos != min_pos else 1.0
+       for node in positions:
+           positions[node] = (positions[node] - min_pos) / range_pos
+   
+       # Define multiple regions with varied diffusion properties
        num_regions = random.randint(3, 6)
        regions = []
        for _ in range(num_regions):
+           region_center = random.uniform(0, 1)
            region = {
-               'center': (random.uniform(0, 1), random.uniform(0, 1)),
-               'radius': random.uniform(0.1, 0.3),
-               'diffusion_length': params.diffusion_length * random.uniform(0.5, 1.5),
-               'diffusion_strength': params.diffusion_strength * random.uniform(0.5, 1.5)
+               'center': region_center,
+               'width': random.uniform(0.05, 0.2),
+               'diffusion_length': params.diffusion_length * random.uniform(0.5, 2.0),
+               'diffusion_strength': params.diffusion_strength * random.uniform(0.5, 2.0),
+               'influence': random.uniform(0.5, 1.5)
            }
            regions.append(region)
    
-       # Assign nodes to regions based on proximity
+       # Assign nodes to regions based on their positions
        node_regions = {i: [] for i in range(params.n)}
        for node in range(params.n):
-           x_node, y_node = positions[node]
+           pos = positions[node]
            for idx, region in enumerate(regions):
-               x_center, y_center = region['center']
-               distance_to_center = ((x_node - x_center) ** 2 + (y_node - y_center) ** 2) ** 0.5
-               if distance_to_center <= region['radius']:
+               # Compute distance to region center with periodic boundary conditions
+               dist_to_center = min(abs(pos - region['center']), 1 - abs(pos - region['center']))
+               if dist_to_center <= region['width']:
                    node_regions[node].append(idx)
    
-       # Define a base decay function for edge probability based on Euclidean distance
+       # Define decay function for edge probability based on distance
        def connection_probability(distance, decay_length):
            return np.exp(-distance / decay_length)
    
        # Loop over all pairs of nodes to decide edge creation based on proximity and regional properties
        for i in range(params.n):
            for j in range(i + 1, params.n):
-               x_i, y_i = positions[i]
-               x_j, y_j = positions[j]
-               distance = ((x_i - x_j) ** 2 + (y_i - y_j) ** 2) ** 0.5
+               pos_i = positions[i]
+               pos_j = positions[j]
+               # Compute minimal distance considering periodicity to simulate organic connectivity
+               distance = min(abs(pos_i - pos_j), 1 - abs(pos_i - pos_j))
    
-               # Initialize edge probability
+               # Accumulate influences from shared regions
                total_influence = 0
-   
-               # Check for shared regions and accumulate influences
                shared_regions = set(node_regions[i]) & set(node_regions[j])
                if shared_regions:
                    for region_idx in shared_regions:
                        region = regions[region_idx]
-                       prob = region['diffusion_strength'] * connection_probability(distance, region['diffusion_length'])
-                       # Randomly vary the probability within a small range
-                       prob *= random.uniform(0.9, 1.1)
-                       total_influence = max(total_influence, prob)
+                       prob = (region['diffusion_strength'] *
+                               connection_probability(distance, region['diffusion_length']) *
+                               region['influence'] * random.uniform(0.9, 1.1))
+                       total_influence += prob
                else:
-                   # Nodes not in the same region have a base low probability to connect
+                   # Base influence for nodes not sharing a region
                    base_diffusion_length = params.diffusion_length * random.uniform(0.8, 1.2)
-                   base_diffusion_strength = params.diffusion_strength * random.uniform(0.2, 0.5)
-                   prob = base_diffusion_strength * connection_probability(distance, base_diffusion_length)
-                   # Randomly vary the probability within a small range
-                   prob *= random.uniform(0.8, 1.0)
-                   total_influence = max(total_influence, prob)
+                   base_diffusion_strength = params.diffusion_strength * random.uniform(0.1, 0.4)
+                   prob = base_diffusion_strength * connection_probability(distance, base_diffusion_length) * random.uniform(0.8, 1.0)
+                   total_influence += prob
    
-               # Probability is within [0, 1]
-               total_influence = min(max(total_influence, 0), 1)
+               # Introduce randomness to mimic natural fluctuations
+               total_influence *= random.uniform(0.7, 1.3)
    
-               # Add edge based on computed probability
+               # Add edge based on computed influence, ensuring organic connectivity patterns
                if random.random() < total_influence:
                    G.add_edge(i, j)
    
        return G
-
+   
    def _make_connectivity(self, G: nx.Graph):
        components = list(nx.connected_components(G))
        while len(components) > 1:

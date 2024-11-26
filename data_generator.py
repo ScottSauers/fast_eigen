@@ -341,15 +341,41 @@ class LaplacianGenerator:
        G = nx.Graph()
        G.add_nodes_from(range(params.n))
        
+       # Assign random positions to nodes in a 1D space (from 0 to 1)
+       positions = np.random.uniform(0, 1, params.n)
+       
+       # Randomize per-node parameters for organic diversity
+       node_strengths = np.random.uniform(0.5, 1.5, params.n)  # Strengths between 0.5 and 1.5
+       node_scales = np.random.uniform(0.05, 0.2, params.n)     # Scales between 0.05 and 0.2
+       
+       # For each node, randomly determine an expected number of connections
+       expected_degrees = np.random.poisson(lam=4, size=params.n)
+       
        for i in range(params.n):
-           for j in range(i + 1, params.n):
-               total_prob = 0
-               for width, strength in zip(params.scale_widths, params.scale_strengths):
-                   distance = min(abs(i - j), params.n - abs(i - j)) if params.periodic else abs(i - j)
-                   total_prob += strength * np.exp(-distance/width)
+           num_edges = expected_degrees[i]
+           # Potential targets are all other nodes
+           potential_targets = np.delete(np.arange(params.n), i)
+           np.random.shuffle(potential_targets)  # Shuffle to introduce randomness
+           
+           edges_added = 0
+           for j in potential_targets:
+               if edges_added >= num_edges:
+                   break  # Stop if we've added enough edges for this node
                
-               if np.random.random() < total_prob:
+               # Calculate the distance between nodes i and j
+               distance = abs(positions[i] - positions[j])
+               if params.periodic:
+                   distance = min(distance, 1 - distance)  # Account for periodic boundary
+               
+               # Compute connection probability based on node parameters and distance
+               scale = (node_scales[i] + node_scales[j]) / 2
+               strength = (node_strengths[i] + node_strengths[j]) / 2
+               prob = strength * np.exp(-distance / scale)
+               prob = min(prob, 1.0)  # Cap probability at 1
+               
+               if np.random.random() < prob:
                    G.add_edge(i, j)
+                   edges_added += 1
        
        return G
    

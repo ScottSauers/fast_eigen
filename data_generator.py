@@ -357,27 +357,28 @@ class LaplacianGenerator:
        G = nx.Graph()
        G.add_nodes_from(range(params.n))
    
-       # Assign positions to nodes along a line with small random variations
-       positions = {}
-       for i in range(params.n):
-           # Nodes are placed along the line with slight random displacement to simulate organic variation
-           positions[i] = (i / params.n) + random.uniform(-0.05, 0.05)  # Adjust displacement as needed
+       # Parameter for position step size, independent of matrix size
+       delta = random.uniform(0.02, 0.05)  # Incorporate randomness
    
-       # Normalize positions to the range [0, 1] to keep positions within bounds
-       min_pos = min(positions.values())
-       max_pos = max(positions.values())
-       range_pos = max_pos - min_pos if max_pos != min_pos else 1.0
-       for node in positions:
-           positions[node] = (positions[node] - min_pos) / range_pos
+       # Assign positions to nodes along a line with small random steps to promote locality
+       positions = {}
+       current_pos = random.uniform(0, 1)  # Start at a random position within [0, 1]
+   
+       for i in range(params.n):
+           # Small random step, independent of 'n'
+           step = random.uniform(-delta, delta)  # Random step size
+           current_pos += step
+           current_pos %= 1.0  # Keep position within [0, 1] using modulo for periodicity
+           positions[i] = current_pos
    
        # Define multiple regions with varied diffusion properties
-       num_regions = random.randint(3, 6)
+       num_regions = random.randint(3, 6)  # Randomize number of regions
        regions = []
        for _ in range(num_regions):
-           region_center = random.uniform(0, 1)
+           region_center = random.uniform(0, 1)  # Random center within [0, 1]
            region = {
                'center': region_center,
-               'width': random.uniform(0.05, 0.2),
+               'width': random.uniform(0.05, 0.2),  # Random width independent of 'n'
                'diffusion_length': params.diffusion_length * random.uniform(0.5, 2.0),
                'diffusion_strength': params.diffusion_strength * random.uniform(0.5, 2.0),
                'influence': random.uniform(0.5, 1.5)
@@ -390,7 +391,7 @@ class LaplacianGenerator:
            pos = positions[node]
            for idx, region in enumerate(regions):
                # Compute distance to region center with periodic boundary conditions
-               dist_to_center = min(abs(pos - region['center']), 1 - abs(pos - region['center']))
+               dist_to_center = min(abs(pos - region['center']), 1.0 - abs(pos - region['center']))
                if dist_to_center <= region['width']:
                    node_regions[node].append(idx)
    
@@ -403,19 +404,21 @@ class LaplacianGenerator:
            for j in range(i + 1, params.n):
                pos_i = positions[i]
                pos_j = positions[j]
-               # Compute minimal distance considering periodicity to simulate organic connectivity
-               distance = min(abs(pos_i - pos_j), 1 - abs(pos_i - pos_j))
+               # Compute minimal distance considering periodicity
+               distance = min(abs(pos_i - pos_j), 1.0 - abs(pos_i - pos_j))
    
                # Accumulate influences from shared regions
-               total_influence = 0
+               total_influence = 0.0
                shared_regions = set(node_regions[i]) & set(node_regions[j])
                if shared_regions:
                    for region_idx in shared_regions:
                        region = regions[region_idx]
+                       # Incorporate randomness into influence calculation
                        prob = (
                            region['diffusion_strength'] *
                            connection_probability(distance, region['diffusion_length']) *
-                           region['influence'] * random.uniform(0.9, 1.1)  # Incorporate randomness
+                           region['influence'] *
+                           random.uniform(0.9, 1.1)
                        )
                        total_influence += prob
                else:
@@ -425,7 +428,7 @@ class LaplacianGenerator:
                    prob = (
                        base_diffusion_strength *
                        connection_probability(distance, base_diffusion_length) *
-                       random.uniform(0.8, 1.0)  # Incorporate randomness
+                       random.uniform(0.8, 1.0)
                    )
                    total_influence += prob
    

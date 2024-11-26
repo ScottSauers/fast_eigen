@@ -207,10 +207,7 @@ class LaplacianGenerator:
    
        return G
 
-   def _generate_circulant_community(self, params: GraphParams) -> nx.Graph:
-       import numpy as np
-       import networkx as nx
-   
+   def _generate_circulant_community(self, params: GraphParams) -> nx.Graph:   
        G = nx.Graph()
        n = params.n
        num_communities = params.num_communities
@@ -221,8 +218,12 @@ class LaplacianGenerator:
        for c in range(num_communities):
            # Create a community graph with organic structure
            # Using the Watts-Strogatz small-world model for intra-community connections
-           # Randomize parameters for variety
-           k = np.random.randint(max(1, community_size // 10), max(2, community_size // 2))
+           # k is even and less than community size
+           possible_k = [k for k in range(2, min(community_size, 20), 2)]  # Limit k to reasonable values
+           if not possible_k:
+               k = 2  # Default to 2 if community_size is very small
+           else:
+               k = np.random.choice(possible_k)
            p = np.random.uniform(0.1, 0.5)  # Rewiring probability for randomness
            
            # Generate the small-world community
@@ -238,12 +239,9 @@ class LaplacianGenerator:
            node_offset += community_size
    
        # Add inter-community edges with organic patterns
-       # Randomly select nodes to connect between communities based on preferential attachment
-       inter_community_edges = int(params.inter_community_prob * n)
+       # Randomly select nodes to connect between communities
+       inter_community_edges = max(1, int(params.inter_community_prob * n))
    
-       # Collect all nodes for degree calculation
-       all_nodes = list(G.nodes())
-       
        for _ in range(inter_community_edges):
            # Select two different communities
            i, j = np.random.choice(num_communities, 2, replace=False)
@@ -254,9 +252,16 @@ class LaplacianGenerator:
            degrees_i = np.array([G.degree(node) for node in community_i_nodes])
            degrees_j = np.array([G.degree(node) for node in community_j_nodes])
            
-           # Calculate probabilities proportional to degrees
-           probs_i = degrees_i / degrees_i.sum()
-           probs_j = degrees_j / degrees_j.sum()
+           # Avoid division by zero by handling the case when sum of degrees is zero
+           if degrees_i.sum() == 0:
+               probs_i = np.ones_like(degrees_i) / len(degrees_i)
+           else:
+               probs_i = degrees_i / degrees_i.sum()
+           
+           if degrees_j.sum() == 0:
+               probs_j = np.ones_like(degrees_j) / len(degrees_j)
+           else:
+               probs_j = degrees_j / degrees_j.sum()
            
            # Randomly select nodes based on degree probabilities
            u = np.random.choice(community_i_nodes, p=probs_i)
@@ -399,7 +404,7 @@ class LaplacianGenerator:
                    j_minus = (i - delta) % n
                    neighbors.extend([j_plus, j_minus])
                else:
-                   # In non-periodic case, ensure indices are within bounds
+                   # In non-periodic case
                    if i + delta < n:
                        neighbors.append(i + delta)
                    if i - delta >= 0:

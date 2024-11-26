@@ -375,10 +375,7 @@ class LaplacianGenerator:
        
        return G
 
-   def _generate_multi_scale(self, params: GraphParams) -> nx.Graph:
-       import numpy as np
-       import networkx as nx
-   
+   def _generate_multi_scale(self, params: GraphParams) -> nx.Graph:   
        n = params.n
        G = nx.Graph()
        G.add_nodes_from(range(n))
@@ -389,55 +386,35 @@ class LaplacianGenerator:
    
        # Maximum scale to determine neighbor consideration range
        max_scale = np.max(node_scales)
-       Dmax = int(np.ceil(3 * max_scale))  # Consider up to 3 times the maximum scale
+       Dmax = int(np.ceil(3 * max_scale))  # Maximum distance to consider
    
        for i in range(n):
            strength_i = node_strengths[i]
            scale_i = node_scales[i]
    
-           # For each node, consider neighbors within Dmax index distances
-           for delta in range(1, Dmax + 1):
-               if params.periodic:
-                   j_plus = (i + delta) % n
-                   j_minus = (i - delta) % n
-                   neighbors = [j_plus, j_minus]
-               else:
-                   neighbors = []
-                   if i + delta < n:
-                       neighbors.append(i + delta)
-                   if i - delta >= 0:
-                       neighbors.append(i - delta)
+           # For each node, consider neighbors within Dmax indices without wrap-around
+           start_j = max(0, i - Dmax)
+           end_j = min(n, i + Dmax + 1)  # +1 because range end is exclusive
    
-               for j in neighbors:
-                   strength_j = node_strengths[j]
-                   scale_j = node_scales[j]
+           for j in range(start_j, end_j):
+               if i == j:
+                   continue  # Skip self-loops
    
-                   # Distance is the minimal index difference
-                   distance = delta
+               distance = abs(i - j)
    
-                   # Compute average strength and scale
-                   strength = (strength_i + strength_j) / 2.0
-                   scale = (scale_i + scale_j) / 2.0
+               strength_j = node_strengths[j]
+               scale_j = node_scales[j]
    
-                   # Calculate connection probability using exponential decay
-                   prob = strength * np.exp(-distance / scale)
-                   prob = min(prob, 1.0)  # Cap at 1
+               # Compute average strength and scale
+               strength = (strength_i + strength_j) / 2.0
+               scale = (scale_i + scale_j) / 2.0
    
-                   if np.random.random() < prob:
-                       G.add_edge(i, j)
+               # Calculate connection probability using exponential decay
+               prob = strength * np.exp(-distance / scale)
+               prob = min(prob, 1.0)  # Cap probability at 1
    
-       # Manually sever any connections beyond 2/3 of maximum allowed distance
-       max_distance = int((2 * n) / 3)
-       edges_to_remove = []
-       for u, v in G.edges():
-           if params.periodic:
-               distance = min(abs(u - v), n - abs(u - v))
-           else:
-               distance = abs(u - v)
-           if distance > max_distance:
-               edges_to_remove.append((u, v))
-   
-       G.remove_edges_from(edges_to_remove)
+               if np.random.random() < prob:
+                   G.add_edge(i, j)
    
        return G
    

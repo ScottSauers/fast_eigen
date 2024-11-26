@@ -188,6 +188,7 @@ class EigensolverModel(nn.Module):
         self.N = N
         self.encoder = BandLimitedEncoder(N)
         self.fusion = FusionNetwork(N)
+        self.decoder = EigenDecompositionNetwork(N)
 
     def forward(self, diagonals):
         # Encode the diagonals

@@ -625,7 +625,7 @@ def main():
     # Generate sample dataset
     print("Generating Laplacian matrices...")
     samples = generate_training_data(
-        num_samples=200,
+        num_samples=10000,
         min_nodes=10,
         max_nodes=500
     )

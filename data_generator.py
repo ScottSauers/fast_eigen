@@ -137,74 +137,75 @@ class LaplacianGenerator:
        L = nx.laplacian_matrix(G).toarray()
        return L, G
 
-   
-   def _generate_path_community(self, params: GraphParams) -> nx.Graph:
-       G = nx.Graph()
-   
-       # Randomly shuffle node IDs to avoid index-based structure
-       all_nodes = list(range(params.n))
-       random.shuffle(all_nodes)
-   
-       # Generate variable-sized communities using a random distribution
-       remaining_nodes = all_nodes[:]
-       community_sizes = []
-       alpha = random.uniform(2.0, 3.0)  # Add variation to the power law exponent
-   
-       for _ in range(params.num_communities - 1):
-           if len(remaining_nodes) <= 5:  # Ensure we don't over-sample
-               break
-           size = max(5, min(int(len(remaining_nodes) * random.random() ** alpha), len(remaining_nodes)))
-           community_sizes.append(size)
-           remaining_nodes = remaining_nodes[size:]
-       community_sizes.append(len(remaining_nodes))  # Include remaining nodes
-   
-       # Create communities with internal structure
-       used_nodes = set()
-       community_centers = []
-   
-       for size in community_sizes:
-           size = min(size, len(all_nodes))  # Clamp size to available nodes
-           community_nodes = random.sample(all_nodes, size)
-           all_nodes = [node for node in all_nodes if node not in community_nodes]
-           core_size = max(3, int(size * random.uniform(0.1, 0.3)))  # Variable core size
-           core_size = min(core_size, len(community_nodes))  # Ensure core size is valid
-           core_nodes = community_nodes[:core_size]
-           periphery_nodes = community_nodes[core_size:]
-   
-           # Create a dense core with randomized connectivity
-           for i in core_nodes:
-               for j in core_nodes:
-                   if i != j and random.random() < random.uniform(0.7, 0.9):
-                       G.add_edge(i, j)
-   
-           # Connect periphery nodes to the core with random probabilities
-           for node in periphery_nodes:
-               if core_nodes:
-                   center = random.choice(core_nodes)
-                   G.add_edge(node, center)
-                   for core_node in core_nodes:
-                       if random.random() < random.uniform(0.2, 0.5):
-                           G.add_edge(node, core_node)
-   
-           # Select a random center node for inter-community connections
-           if core_nodes:
-               community_centers.append(random.choice(core_nodes))
-           used_nodes.update(community_nodes)
-   
-       # Add inter-community connections based on distance
-       for i, center1 in enumerate(community_centers):
-           for j, center2 in enumerate(community_centers[i + 1:], i + 1):
-               distance = abs(i - j)
-               prob = params.inter_community_prob * random.uniform(0.5, 1.5) * np.exp(-distance / random.uniform(1.5, 3.0))
-               if random.random() < prob:
-                   num_bridges = random.randint(1, 3)
-                   for _ in range(num_bridges):
-                       if used_nodes:
-                           source = random.choice(list(used_nodes))
-                           target = random.choice(list(used_nodes))
-                           G.add_edge(source, target)
-   
-       return G
+def _generate_path_community(self, params: GraphParams) -> nx.Graph:
+    G = nx.Graph()
+
+    node_positions = {i: random.uniform(0, 100) for i in range(params.n)}
+    sorted_nodes = sorted(node_positions.keys(), key=lambda x: node_positions[x])
+
+    # Generate variable-sized communities by partitioning the line
+    remaining_nodes = params.n
+    community_sizes = []
+    min_size = 1
+    max_size = max(min_size, params.n // params.num_communities)
+
+    while remaining_nodes > 0:
+        size = random.randint(min_size, min(max_size, remaining_nodes))
+        community_sizes.append(size)
+        remaining_nodes -= size
+
+    # Create communities by grouping adjacent nodes
+    communities = []
+    idx = 0
+    for size in community_sizes:
+        community_nodes = sorted_nodes[idx:idx + size]
+        communities.append(community_nodes)
+        idx += size
+
+    # Create local connections within communities
+    for community_nodes in communities:
+        size = len(community_nodes)
+        # Connect nodes within the community based on proximity
+        for i in range(size):
+            for j in range(i + 1, size):
+                node_i = community_nodes[i]
+                node_j = community_nodes[j]
+                distance = abs(node_positions[node_i] - node_positions[node_j])
+                # Higher probability for closer nodes to ensure bandedness
+                prob = np.exp(-distance / random.uniform(2.0, 5.0)) * random.uniform(0.7, 1.0)
+                if random.random() < prob:
+                    G.add_edge(node_i, node_j)
+
+    # Add inter-community connections with decreasing probability based on distance
+    for idx in range(len(communities) - 1):
+        community_a = communities[idx]
+        community_b = communities[idx + 1]
+
+        # Select a subset of nodes to attempt inter-community connections
+        num_connections = random.randint(1, min(len(community_a), len(community_b)))
+        nodes_a = random.sample(community_a, num_connections)
+        nodes_b = random.sample(community_b, num_connections)
+
+        for node_i, node_j in zip(nodes_a, nodes_b):
+            distance = abs(node_positions[node_i] - node_positions[node_j])
+            # Reduced probability for inter-community connections
+            prob = params.inter_community_prob * np.exp(-distance / random.uniform(5.0, 15.0)) * random.uniform(0.5, 1.0)
+            if random.random() < prob:
+                G.add_edge(node_i, node_j)
+
+    # A few long-range connections
+    num_long_range = random.randint(0, params.num_communities)
+    for _ in range(num_long_range):
+        node_i = random.choice(sorted_nodes)
+        node_j = random.choice(sorted_nodes)
+        if node_i != node_j:
+            distance = abs(node_positions[node_i] - node_positions[node_j])
+            # Very low probability for long-range connections
+            prob = 0.01 * np.exp(-distance / random.uniform(20.0, 50.0))
+            if random.random() < prob:
+                G.add_edge(node_i, node_j)
+
+    return G
 
    def _generate_circulant_community(self, params: GraphParams) -> nx.Graph:
        G = nx.Graph()

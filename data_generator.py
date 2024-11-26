@@ -627,7 +627,7 @@ def main():
     samples = generate_training_data(
         num_samples=200,
         min_nodes=10,
-        max_nodes=1500
+        max_nodes=500
     )
     
     # Visualize random selection

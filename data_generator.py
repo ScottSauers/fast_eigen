@@ -208,27 +208,60 @@ class LaplacianGenerator:
        return G
 
    def _generate_circulant_community(self, params: GraphParams) -> nx.Graph:
+       import numpy as np
+       import networkx as nx
+   
        G = nx.Graph()
-       community_size = params.n // params.num_communities
+       n = params.n
+       num_communities = params.num_communities
+       community_size = n // num_communities
+       node_offset = 0
+       community_graphs = []
        
-       for c in range(params.num_communities):
-           start = c * community_size
-           for i in range(start, start + community_size):
-               for j in range(1, params.k_neighbors + 1):
-                   node1 = i
-                   node2 = start + ((i - start + j) % community_size)
-                   G.add_edge(node1, node2)
-                   
-       for i in range(params.num_communities):
-           for j in range(i + 1, params.num_communities):
-               start_i = i * community_size
-               start_j = j * community_size
-               for a in range(community_size):
-                   if np.random.random() < params.inter_community_prob:
-                       if np.random.random() < 0.5:
-                           G.add_edge(start_i + a, start_j + (community_size - a - 1))
-                       else:
-                           G.add_edge(start_i + a, start_j + a)
+       for c in range(num_communities):
+           # Create a community graph with organic structure
+           # Using the Watts-Strogatz small-world model for intra-community connections
+           # Randomize parameters for variety
+           k = np.random.randint(max(1, community_size // 10), max(2, community_size // 2))
+           p = np.random.uniform(0.1, 0.5)  # Rewiring probability for randomness
+           
+           # Generate the small-world community
+           community = nx.watts_strogatz_graph(community_size, k, p)
+           
+           # Relabel nodes to have unique labels across communities
+           mapping = {node: node + node_offset for node in community.nodes()}
+           community = nx.relabel_nodes(community, mapping)
+           
+           G = nx.compose(G, community)
+           
+           community_graphs.append((community, mapping))
+           node_offset += community_size
+   
+       # Add inter-community edges with organic patterns
+       # Randomly select nodes to connect between communities based on preferential attachment
+       inter_community_edges = int(params.inter_community_prob * n)
+   
+       # Collect all nodes for degree calculation
+       all_nodes = list(G.nodes())
+       
+       for _ in range(inter_community_edges):
+           # Select two different communities
+           i, j = np.random.choice(num_communities, 2, replace=False)
+           community_i_nodes = list(community_graphs[i][0].nodes())
+           community_j_nodes = list(community_graphs[j][0].nodes())
+           
+           # Preferentially select nodes with higher degrees
+           degrees_i = np.array([G.degree(node) for node in community_i_nodes])
+           degrees_j = np.array([G.degree(node) for node in community_j_nodes])
+           
+           # Calculate probabilities proportional to degrees
+           probs_i = degrees_i / degrees_i.sum()
+           probs_j = degrees_j / degrees_j.sum()
+           
+           # Randomly select nodes based on degree probabilities
+           u = np.random.choice(community_i_nodes, p=probs_i)
+           v = np.random.choice(community_j_nodes, p=probs_j)
+           G.add_edge(u, v)
        
        return G
 

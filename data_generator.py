@@ -7,6 +7,7 @@ import random
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from tqdm import tqdm
+import pickle
 
 class GraphType(Enum):
    PATH_COMMUNITY = "path_community"
@@ -533,24 +534,43 @@ class LaplacianGenerator:
            G.add_edge(c1, c2)
            components = list(nx.connected_components(G))
 
-def generate_training_data(num_samples: int, min_nodes: int = 100, max_nodes: int = 1000) -> List[Tuple[np.ndarray, GraphParams]]:
-   generator = LaplacianGenerator()
-   samples = []
-   
-   with tqdm(total=num_samples, desc="Generating samples") as pbar:
-       for i in range(num_samples):
-           pbar.set_description(f"Generating sample {i+1}/{num_samples}")
-           
-           params = generator.generate_random_params(min_nodes, max_nodes)
-           print(f"\nGenerating {params.graph_type.value} graph with {params.n} nodes...")
-           L, _ = generator.generate(params)
-           samples.append((L, params))
-           
-           pbar.update(1)
-           percentage = ((i + 1) / num_samples) * 100
-           pbar.set_postfix({"Completed": f"{percentage:.1f}%"})
-   
-   return samples
+def generate_training_data(num_samples: int, data_dir: str = "data", min_nodes: int = 100, max_nodes: int = 1000) -> List[Tuple[np.ndarray, GraphParams]]:
+    # Create data directory if it doesn't exist
+    os.makedirs(data_dir, exist_ok=True)
+    
+    # Check existing samples
+    existing_samples = len([f for f in os.listdir(data_dir) if f.endswith('.pkl')])
+    samples_needed = max(0, num_samples - existing_samples)
+    
+    if samples_needed == 0:
+        print(f"Already have {existing_samples} samples in {data_dir}, no new samples needed.")
+        return []
+        
+    print(f"Found {existing_samples} existing samples. Generating {samples_needed} new samples...")
+    
+    generator = LaplacianGenerator()
+    samples = []
+    
+    with tqdm(total=samples_needed, desc="Generating samples") as pbar:
+        for i in range(samples_needed):
+            pbar.set_description(f"Generating sample {i+1}/{samples_needed}")
+            
+            params = generator.generate_random_params(min_nodes, max_nodes)
+            print(f"\nGenerating {params.graph_type.value} graph with {params.n} nodes...")
+            L, _ = generator.generate(params)
+            
+            # Save each sample
+            sample_path = os.path.join(data_dir, f'sample_{existing_samples + i}.pkl')
+            with open(sample_path, 'wb') as f:
+                pickle.dump((L, params), f)
+            
+            samples.append((L, params))
+            
+            pbar.update(1)
+            percentage = ((i + 1) / samples_needed) * 100
+            pbar.set_postfix({"Completed": f"{percentage:.1f}%"})
+    
+    return samples
 
 
 def visualize_matrices(samples, num_display=5):
@@ -622,27 +642,25 @@ def visualize_matrices(samples, num_display=5):
             print(f"  Distance decay: {params.distance_decay:.3f}")
 
 def main():
-    # Generate sample dataset
     print("Generating Laplacian matrices...")
     samples = generate_training_data(
         num_samples=10000,
+        data_dir='data',
         min_nodes=10,
         max_nodes=500
     )
-    
-    # Visualize random selection
-    print("\nVisualizing 5 random samples:")
-    visualize_matrices(samples, num_display=5)
-    
-    # Print summary statistics
-    print("\nGenerated dataset summary:")
-    type_counts = {}
-    for _, params in samples:
-        type_counts[params.graph_type.value] = type_counts.get(params.graph_type.value, 0) + 1
-    
-    print("\nGraph type distribution:")
-    for type_name, count in type_counts.items():
-        print(f"  {type_name}: {count}")
+    if samples:  # Only visualize if new samples were generated
+        print("\nVisualizing 5 random samples:")
+        visualize_matrices(samples, num_display=5)
+        
+        print("\nGenerated dataset summary:")
+        type_counts = {}
+        for _, params in samples:
+            type_counts[params.graph_type.value] = type_counts.get(params.graph_type.value, 0) + 1
+        
+        print("\nGraph type distribution:")
+        for type_name, count in type_counts.items():
+            print(f"  {type_name}: {count}")
 
 if __name__ == "__main__":
     main()

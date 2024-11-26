@@ -341,68 +341,58 @@ class LaplacianGenerator:
        import numpy as np
        import networkx as nx
    
-       G = nx.Graph()
        n = params.n
+       G = nx.Graph()
+       G.add_nodes_from(range(n))
    
-       # Assign random positions to nodes in a 1D space (from 0 to 1)
-       positions = np.random.uniform(0, 1, n)
-   
-       # Sort nodes by their positions to make adjacency matrix banded
-       sorted_indices = np.argsort(positions)
-       sorted_positions = positions[sorted_indices]
-   
-       # Map the sorted indices back to original node indices
-       index_map = {sorted_index: original_index for original_index, sorted_index in enumerate(sorted_indices)}
-       inverse_index_map = {v: k for k, v in index_map.items()}
-   
-       # Randomize per-node parameters for organic diversity
+       # Randomly generate per-node parameters for organic diversity
        node_strengths = np.random.uniform(0.5, 1.5, n)  # Strengths between 0.5 and 1.5
-       node_scales = np.random.uniform(0.05, 0.2, n)     # Scales between 0.05 and 0.2
+       node_scales = np.random.uniform(1, 5, n)  # Scales between 1 and 5
    
        # Maximum scale to determine neighbor consideration range
        max_scale = np.max(node_scales)
-       # Determine the maximum distance in terms of node indices after sorting
-       Dmax = int(np.ceil(3 * n * max_scale))  # Adjust factor to control band width
+       Dmax = int(np.ceil(3 * max_scale))  # Consider up to 3 times the maximum scale distance
    
-       G.add_nodes_from(range(n))
-   
-       # Iterate over nodes in sorted order
        for i in range(n):
-           orig_i = sorted_indices[i]
-           strength_i = node_strengths[orig_i]
-           scale_i = node_scales[orig_i]
-           pos_i = positions[orig_i]
+           strength_i = node_strengths[i]
+           scale_i = node_scales[i]
    
-           # Consider neighbors within Dmax positions
-           start = max(0, i - Dmax)
-           end = min(n, i + Dmax + 1)  # +1 to include the endpoint
-   
-           for j in range(start, end):
-               if i == j:
-                   continue  # Skip self-connections
-   
-               orig_j = sorted_indices[j]
-               strength_j = node_strengths[orig_j]
-               scale_j = node_scales[orig_j]
-               pos_j = positions[orig_j]
-   
-               # Calculate distance with periodic boundary conditions if applicable
-               distance = abs(pos_i - pos_j)
+           # For each node, consider neighbors within Dmax index distances
+           for delta in range(1, Dmax + 1):
+               neighbors = []
+               # Handle periodic boundary conditions
                if params.periodic:
-                   distance = min(distance, 1 - distance)  # Account for wrap-around
+                   j_plus = (i + delta) % n
+                   j_minus = (i - delta) % n
+                   neighbors.extend([j_plus, j_minus])
+               else:
+                   # In non-periodic case, ensure indices are within bounds
+                   if i + delta < n:
+                       neighbors.append(i + delta)
+                   if i - delta >= 0:
+                       neighbors.append(i - delta)
    
-               # Compute average strength and scale
-               strength = (strength_i + strength_j) / 2
-               scale = (scale_i + scale_j) / 2
+               for j in neighbors:
+                   strength_j = node_strengths[j]
+                   scale_j = node_scales[j]
    
-               # Compute connection probability based on distance
-               prob = strength * np.exp(-distance / scale)
-               prob = min(prob, 1.0)  # Cap probability at 1
+                   # Distance is simply the index difference
+                   distance = delta
    
-               if np.random.random() < prob:
-                   G.add_edge(orig_i, orig_j)
+                   # Compute average strength and scale
+                   strength = (strength_i + strength_j) / 2.0
+                   scale = (scale_i + scale_j) / 2.0
+   
+                   # Calculate connection probability using exponential decay
+                   prob = strength * np.exp(-distance / scale)
+                   prob = min(prob, 1.0)  # Cap probability at 1
+   
+                   if np.random.random() < prob:
+                       G.add_edge(i, j)
    
        return G
+   
+
    
    def _generate_diffusion(self, params: GraphParams) -> nx.Graph:
        G = nx.Graph()

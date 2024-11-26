@@ -171,7 +171,7 @@ class LaplacianGenerator:
                    node_i = community_nodes[i]
                    node_j = community_nodes[j]
                    distance = abs(node_positions[node_i] - node_positions[node_j])
-                   # Higher probability for closer nodes to ensure bandedness
+                   # Higher probability for closer nodes for bandedness
                    prob = np.exp(-distance / random.uniform(2.0, 5.0)) * random.uniform(0.7, 1.0)
                    if random.random() < prob:
                        G.add_edge(node_i, node_j)
@@ -357,16 +357,13 @@ class LaplacianGenerator:
        G = nx.Graph()
        G.add_nodes_from(range(params.n))
    
-       # Assign positions to nodes along a line with clustering tendencies
+       # Assign positions to nodes along a line with small random variations
        positions = {}
-       current_pos = 0.0
-       while len(positions) < params.n:
-           # Random step size to create clusters and varied spacing
-           step = random.expovariate(1.0) * random.choice([-1, 1]) * random.uniform(0.5, 1.5)
-           current_pos += step
-           positions[len(positions)] = current_pos
+       for i in range(params.n):
+           # Nodes are placed along the line with slight random displacement to simulate organic variation
+           positions[i] = (i / params.n) + random.uniform(-0.05, 0.05)  # Adjust displacement as needed
    
-       # Normalize positions to range [0, 1] to avoid dependence on node index or total nodes
+       # Normalize positions to the range [0, 1] to keep positions within bounds
        min_pos = min(positions.values())
        max_pos = max(positions.values())
        range_pos = max_pos - min_pos if max_pos != min_pos else 1.0
@@ -415,21 +412,27 @@ class LaplacianGenerator:
                if shared_regions:
                    for region_idx in shared_regions:
                        region = regions[region_idx]
-                       prob = (region['diffusion_strength'] *
-                               connection_probability(distance, region['diffusion_length']) *
-                               region['influence'] * random.uniform(0.9, 1.1))
+                       prob = (
+                           region['diffusion_strength'] *
+                           connection_probability(distance, region['diffusion_length']) *
+                           region['influence'] * random.uniform(0.9, 1.1)  # Incorporate randomness
+                       )
                        total_influence += prob
                else:
                    # Base influence for nodes not sharing a region
                    base_diffusion_length = params.diffusion_length * random.uniform(0.8, 1.2)
                    base_diffusion_strength = params.diffusion_strength * random.uniform(0.1, 0.4)
-                   prob = base_diffusion_strength * connection_probability(distance, base_diffusion_length) * random.uniform(0.8, 1.0)
+                   prob = (
+                       base_diffusion_strength *
+                       connection_probability(distance, base_diffusion_length) *
+                       random.uniform(0.8, 1.0)  # Incorporate randomness
+                   )
                    total_influence += prob
    
                # Introduce randomness to mimic natural fluctuations
                total_influence *= random.uniform(0.7, 1.3)
    
-               # Add edge based on computed influence, ensuring organic connectivity patterns
+               # Add edge based on computed influence
                if random.random() < total_influence:
                    G.add_edge(i, j)
    

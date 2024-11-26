@@ -542,8 +542,8 @@ def main():
     print("Generating Laplacian matrices...")
     samples = generate_training_data(
         num_samples=20,
-        min_nodes=20,
-        max_nodes=500
+        min_nodes=10,
+        max_nodes=50
     )
     
     # Visualize random selection

@@ -355,70 +355,71 @@ class LaplacianGenerator:
    def _generate_diffusion(self, params: GraphParams) -> nx.Graph:
        G = nx.Graph()
        G.add_nodes_from(range(params.n))
-       
-       # Create multiple types of sources with different characteristics
-       source_types = {
-           'strong': {
-               'count': params.num_sources // 3,
-               'strength': params.diffusion_strength * 1.5,
-               'length': params.diffusion_length * 0.7
-           },
-           'medium': {
-               'count': params.num_sources // 3,
-               'strength': params.diffusion_strength,
-               'length': params.diffusion_length
-           },
-           'weak': {
-               'count': params.num_sources // 3 + params.num_sources % 3,
-               'strength': params.diffusion_strength * 0.5,
-               'length': params.diffusion_length * 1.3
+   
+       # Assign random positions to nodes in a 2D plane
+       positions = {i: (random.uniform(0, 1), random.uniform(0, 1)) for i in range(params.n)}
+   
+       # Define multiple regions with different diffusion characteristics
+       num_regions = random.randint(3, 6)
+       regions = []
+       for _ in range(num_regions):
+           region = {
+               'center': (random.uniform(0, 1), random.uniform(0, 1)),
+               'radius': random.uniform(0.1, 0.3),
+               'diffusion_length': params.diffusion_length * random.uniform(0.5, 1.5),
+               'diffusion_strength': params.diffusion_strength * random.uniform(0.5, 1.5)
            }
-       }
-       
-       # Generate sources with spatial correlation
-       sources = {}
-       for type_name, props in source_types.items():
-           sources[type_name] = []
-           for _ in range(props['count']):
-               if not sources[type_name]:
-                   # Place first source randomly
-                   sources[type_name].append(random.randint(0, params.n - 1))
-               else:
-                   # Place subsequent sources with some correlation to existing ones
-                   while True:
-                       candidate = (random.choice(sources[type_name]) + 
-                                  random.randint(-params.n//4, params.n//4)) % params.n
-                       if candidate not in sources[type_name]:
-                           sources[type_name].append(candidate)
-                           break
-       
-       # Generate edges based on diffusion from multiple source types
+           regions.append(region)
+   
+       # Assign nodes to regions based on proximity
+       node_regions = {i: [] for i in range(params.n)}
+       for node in range(params.n):
+           x_node, y_node = positions[node]
+           for idx, region in enumerate(regions):
+               x_center, y_center = region['center']
+               distance_to_center = ((x_node - x_center) ** 2 + (y_node - y_center) ** 2) ** 0.5
+               if distance_to_center <= region['radius']:
+                   node_regions[node].append(idx)
+   
+       # Define a base decay function for edge probability based on Euclidean distance
+       def connection_probability(distance, decay_length):
+           return np.exp(-distance / decay_length)
+   
+       # Loop over all pairs of nodes to decide edge creation based on proximity and regional properties
        for i in range(params.n):
            for j in range(i + 1, params.n):
+               x_i, y_i = positions[i]
+               x_j, y_j = positions[j]
+               distance = ((x_i - x_j) ** 2 + (y_i - y_j) ** 2) ** 0.5
+   
+               # Initialize edge probability
                total_influence = 0
-               
-               for type_name, props in source_types.items():
-                   for source in sources[type_name]:
-                       dist_i = min(abs(i - source), params.n - abs(i - source))
-                       dist_j = min(abs(j - source), params.n - abs(j - source))
-                       
-                       # Add directional bias
-                       bias = 1.0
-                       if (dist_i + dist_j) > 0:
-                           angle = abs(dist_i - dist_j) / (dist_i + dist_j)
-                           bias = 1.0 + angle  # Prefer connections along similar distances
-                       
-                       influence = (props['strength'] * 
-                                  bias * 
-                                  np.exp(-(dist_i + dist_j)/(2 * props['length'])))
-                       total_influence = max(total_influence, influence)
-               
-               # Add random fluctuations
-               total_influence *= random.uniform(0.8, 1.2)
-               
+   
+               # Check for shared regions and accumulate influences
+               shared_regions = set(node_regions[i]) & set(node_regions[j])
+               if shared_regions:
+                   for region_idx in shared_regions:
+                       region = regions[region_idx]
+                       prob = region['diffusion_strength'] * connection_probability(distance, region['diffusion_length'])
+                       # Randomly vary the probability within a small range
+                       prob *= random.uniform(0.9, 1.1)
+                       total_influence = max(total_influence, prob)
+               else:
+                   # Nodes not in the same region have a base low probability to connect
+                   base_diffusion_length = params.diffusion_length * random.uniform(0.8, 1.2)
+                   base_diffusion_strength = params.diffusion_strength * random.uniform(0.2, 0.5)
+                   prob = base_diffusion_strength * connection_probability(distance, base_diffusion_length)
+                   # Randomly vary the probability within a small range
+                   prob *= random.uniform(0.8, 1.0)
+                   total_influence = max(total_influence, prob)
+   
+               # Probability is within [0, 1]
+               total_influence = min(max(total_influence, 0), 1)
+   
+               # Add edge based on computed probability
                if random.random() < total_influence:
                    G.add_edge(i, j)
-       
+   
        return G
 
    def _make_connectivity(self, G: nx.Graph):

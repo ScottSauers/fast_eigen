@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import networkx as nx
 from dataclasses import dataclass
 from enum import Enum

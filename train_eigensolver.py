@@ -347,21 +347,27 @@ def validate(model, val_loader):
     avg_metrics = {k: running_metrics[k]/num_batches for k in running_metrics}
     return avg_loss, avg_metrics
 
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train Eigensolver Neural Network.")
     parser.add_argument("--data_dir", type=str, default="data", help="Directory containing training data.")    
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory to save checkpoints.")
     parser.add_argument("--loss_history_file", type=str, default="loss_history.csv", help="File to save loss history.")
+    parser.add_argument("--epochs", type=int, default=100, help="Number of epochs to train.")
     args = parser.parse_args()
 
     if not os.path.exists(args.checkpoint_dir):
         os.makedirs(args.checkpoint_dir)
 
     full_dataset = LaplacianDataset(args.data_dir)
-    total_size = len(full_dataset)
-    val_size = total_size // 10
-    train_size = total_size - val_size
-    train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+    
+    # Get a sample first to determine shapes and sizes
+    sample_L, _, _ = full_dataset[0]
+    N = sample_L.size(0)
+    
+    # Now we can use sample_L.shape in find_batch_size
     def find_batch_size(sample_shape, max_batch=32):
         batch_size = max_batch
         while batch_size > 1:
@@ -374,18 +380,22 @@ def main():
         return 1
     
     batch_size = find_batch_size(sample_L.shape)
+    
+    # Split dataset and create loaders
+    total_size = len(full_dataset)
+    val_size = total_size // 10
+    train_size = total_size - val_size
+    train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+    
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-
-    sample_L, _, _ = full_dataset[0]
-    N = sample_L.size(0)
 
     model = EigensolverModel(N).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=1e-3)
     scheduler = CosineAnnealingLR(optimizer, T_max=len(train_loader)*args.epochs)
 
     start_epoch = load_checkpoint(model, optimizer, scheduler, args.checkpoint_dir)
-    train(model, train_loader, val_loader, optimizer, scheduler, start_epoch, args.epochs, args.checkpoint_dir, args.loss_history_file)
+    train(model, train_loader, val_loader, optimizer, scheduler, start_epoch, args.checkpoint_dir, args.loss_history_file)
 
 if __name__ == "__main__":
     main()

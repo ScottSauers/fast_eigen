@@ -384,38 +384,42 @@ class LaplacianGenerator:
        G.add_nodes_from(range(n))
    
        # Randomly generate per-node parameters for organic diversity
-       node_strengths = np.random.uniform(0.5, 1.5, n)  # Strengths between 0.5 and 1.5
-       node_scales = np.random.uniform(1, 5, n)  # Scales between 1 and 5
+       node_strengths = np.random.uniform(0.5, 1.5, n)
+       node_scales = np.random.uniform(1, 5, n)
    
        # Maximum scale to determine neighbor consideration range
        max_scale = np.max(node_scales)
-       Dmax = int(np.ceil(3 * max_scale))  # Consider up to 3 times the maximum scale distance
+       Dmax = int(np.ceil(3 * max_scale))  # Consider distances up to 3 times the maximum scale
    
        for i in range(n):
            strength_i = node_strengths[i]
            scale_i = node_scales[i]
    
-           # For each node, consider neighbors within Dmax index distances
+           # For each node, consider all other nodes within Dmax distance
            for delta in range(1, Dmax + 1):
-               neighbors = []
-               # Handle periodic boundary conditions
                if params.periodic:
+                   # Adjust indices for periodic boundary conditions
                    j_plus = (i + delta) % n
                    j_minus = (i - delta) % n
-                   neighbors.extend([j_plus, j_minus])
-               else:
-                   # In non-periodic case
-                   if i + delta < n:
-                       neighbors.append(i + delta)
-                   if i - delta >= 0:
-                       neighbors.append(i - delta)
    
-               for j in neighbors:
+                   # Compute minimal distances considering wrap-around
+                   distance_plus = min(delta, n - delta)
+                   distance_minus = distance_plus  # Same distance due to symmetry
+   
+                   neighbors = [(j_plus, distance_plus), (j_minus, distance_minus)]
+               else:
+                   neighbors = []
+                   if i + delta < n:
+                       neighbors.append((i + delta, delta))
+                   if i - delta >= 0:
+                       neighbors.append((i - delta, delta))
+   
+               for j, distance in neighbors:
+                   if distance > Dmax:
+                       continue  # Skip if beyond maximum considered distance
+   
                    strength_j = node_strengths[j]
                    scale_j = node_scales[j]
-   
-                   # Distance is simply the index difference
-                   distance = delta
    
                    # Compute average strength and scale
                    strength = (strength_i + strength_j) / 2.0
@@ -429,7 +433,6 @@ class LaplacianGenerator:
                        G.add_edge(i, j)
    
        return G
-   
 
    
    def _generate_diffusion(self, params: GraphParams) -> nx.Graph:

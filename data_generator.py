@@ -352,33 +352,35 @@ class LaplacianGenerator:
                    G.add_edge(i, j)
        
        return G
-
+   
    def _generate_diffusion(self, params: GraphParams) -> nx.Graph:
        G = nx.Graph()
        G.add_nodes_from(range(params.n))
    
-       # Parameter for position step size, independent of matrix size
-       delta = random.uniform(0.02, 0.05)  # Incorporate randomness
-   
-       # Assign positions to nodes along a line with small random steps to promote locality
+       # Assign positions to nodes along a line with clustering tendencies
        positions = {}
-       current_pos = random.uniform(0, 1)  # Start at a random position within [0, 1]
-   
-       for i in range(params.n):
-           # Small random step, independent of 'n'
-           step = random.uniform(-delta, delta)  # Random step size
+       current_pos = 0.0
+       while len(positions) < params.n:
+           # Random step size to create clusters and varied spacing
+           step = random.expovariate(1.0) * random.choice([-1, 1]) * random.uniform(0.5, 1.5)
            current_pos += step
-           current_pos %= 1.0  # Keep position within [0, 1] using modulo for periodicity
-           positions[i] = current_pos
+           positions[len(positions)] = current_pos
+   
+       # Normalize positions to range [0, 1] to avoid dependence on node index or total nodes
+       min_pos = min(positions.values())
+       max_pos = max(positions.values())
+       range_pos = max_pos - min_pos if max_pos != min_pos else 1.0
+       for node in positions:
+           positions[node] = (positions[node] - min_pos) / range_pos
    
        # Define multiple regions with varied diffusion properties
-       num_regions = random.randint(3, 6)  # Randomize number of regions
+       num_regions = random.randint(3, 6)
        regions = []
        for _ in range(num_regions):
-           region_center = random.uniform(0, 1)  # Random center within [0, 1]
+           region_center = random.uniform(0, 1)
            region = {
                'center': region_center,
-               'width': random.uniform(0.05, 0.2),  # Random width independent of 'n'
+               'width': random.uniform(0.05, 0.2),
                'diffusion_length': params.diffusion_length * random.uniform(0.5, 2.0),
                'diffusion_strength': params.diffusion_strength * random.uniform(0.5, 2.0),
                'influence': random.uniform(0.5, 1.5)
@@ -391,7 +393,7 @@ class LaplacianGenerator:
            pos = positions[node]
            for idx, region in enumerate(regions):
                # Compute distance to region center with periodic boundary conditions
-               dist_to_center = min(abs(pos - region['center']), 1.0 - abs(pos - region['center']))
+               dist_to_center = min(abs(pos - region['center']), 1 - abs(pos - region['center']))
                if dist_to_center <= region['width']:
                    node_regions[node].append(idx)
    
@@ -399,14 +401,27 @@ class LaplacianGenerator:
        def connection_probability(distance, decay_length):
            return np.exp(-distance / decay_length)
    
-       # Loop over all pairs of nodes to decide edge creation based on proximity and regional properties
-       for i in range(params.n):
-           for j in range(i + 1, params.n):
-               pos_i = positions[i]
-               pos_j = positions[j]
-               # Compute minimal distance considering periodicity
-               distance = min(abs(pos_i - pos_j), 1.0 - abs(pos_i - pos_j))
+       # Define maximum distance for potential connections to enforce bandedness and sparsity
+       max_connection_distance = random.uniform(0.05, 0.15)  # Adjusted to control sparsity and bandedness
    
+       # For each node, consider potential connections within the max distance
+       for i in range(params.n):
+           pos_i = positions[i]
+           # Find nodes within the maximum connection distance
+           potential_neighbors = []
+           for j in range(params.n):
+               if i != j:
+                   pos_j = positions[j]
+                   # Compute minimal distance considering periodicity
+                   distance = min(abs(pos_i - pos_j), 1 - abs(pos_i - pos_j))
+                   if distance <= max_connection_distance:
+                       potential_neighbors.append((j, distance))
+   
+           # Shuffle potential neighbors to introduce randomness
+           random.shuffle(potential_neighbors)
+   
+           # Iterate over potential neighbors to decide on edge creation
+           for j, distance in potential_neighbors:
                # Accumulate influences from shared regions
                total_influence = 0.0
                shared_regions = set(node_regions[i]) & set(node_regions[j])
@@ -432,15 +447,19 @@ class LaplacianGenerator:
                    )
                    total_influence += prob
    
-               # Introduce randomness to mimic natural fluctuations
+               # Introduce additional randomness to mimic natural fluctuations
                total_influence *= random.uniform(0.7, 1.3)
+   
+               #  Probabilities stay within [0, 1]
+               total_influence = min(total_influence, 1.0)
    
                # Add edge based on computed influence
                if random.random() < total_influence:
                    G.add_edge(i, j)
    
        return G
-   
+
+
    def _make_connectivity(self, G: nx.Graph):
        components = list(nx.connected_components(G))
        while len(components) > 1:

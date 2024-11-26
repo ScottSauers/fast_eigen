@@ -261,7 +261,7 @@ def train(model, train_loader, val_loader, optimizer, scheduler, start_epoch, ch
             eigenvalues_batch = eigenvalues_batch.to(device)
             eigenvectors_batch = eigenvectors_batch.to(device)
             optimizer.zero_grad()
-            diagonals = extract_diagonals(L_batch, model.encoder.b)
+            diagonals = extract_diagonals(L_batch)
             diagonals = [d.to(device) for d in diagonals]
 
             if use_amp:
@@ -335,7 +335,7 @@ def validate(model, val_loader):
             L_batch = L_batch.to(device)
             eigenvalues_batch = eigenvalues_batch.to(device)
             eigenvectors_batch = eigenvectors_batch.to(device)
-            diagonals = extract_diagonals(L_batch, model.encoder.b)
+            diagonals = extract_diagonals(L_batch)
             diagonals = [d.to(device) for d in diagonals]
             eigenvalues_pred, eigenvectors_pred = model(diagonals)
             total_loss, losses = compute_loss(eigenvalues_pred, eigenvectors_pred, eigenvalues_batch, eigenvectors_batch, L_batch, model.decoder.N, device)

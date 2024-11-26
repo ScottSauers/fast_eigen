@@ -375,10 +375,7 @@ class LaplacianGenerator:
        
        return G
 
-   def _generate_multi_scale(self, params: GraphParams) -> nx.Graph:
-       import numpy as np
-       import networkx as nx
-   
+   def _generate_multi_scale(self, params: GraphParams) -> nx.Graph:   
        n = params.n
        G = nx.Graph()
        G.add_nodes_from(range(n))
@@ -389,51 +386,48 @@ class LaplacianGenerator:
    
        # Maximum scale to determine neighbor consideration range
        max_scale = np.max(node_scales)
-       Dmax = int(np.ceil(3 * max_scale))  # Consider distances up to 3 times the maximum scale
+       Dmax = int(np.ceil(3 * max_scale))  # Consider up to 3 times the maximum scale
+   
+       # Define maximum allowed distance to prevent wrap-around connections between distant nodes
+       if params.periodic:
+           max_allowed_distance = n // 2 if n % 2 == 0 else (n - 1) // 2
+       else:
+           max_allowed_distance = n
    
        for i in range(n):
            strength_i = node_strengths[i]
            scale_i = node_scales[i]
    
            # For each node, consider all other nodes within Dmax distance
-           for delta in range(1, Dmax + 1):
+           for j in range(n):
+               if i == j:
+                   continue
+   
+               # Compute minimal distance considering periodicity if applicable
                if params.periodic:
-                   # Adjust indices for periodic boundary conditions
-                   j_plus = (i + delta) % n
-                   j_minus = (i - delta) % n
-   
-                   # Compute minimal distances considering wrap-around
-                   distance_plus = min(delta, n - delta)
-                   distance_minus = distance_plus  # Same distance due to symmetry
-   
-                   neighbors = [(j_plus, distance_plus), (j_minus, distance_minus)]
+                   distance = min(abs(i - j), n - abs(i - j))
                else:
-                   neighbors = []
-                   if i + delta < n:
-                       neighbors.append((i + delta, delta))
-                   if i - delta >= 0:
-                       neighbors.append((i - delta, delta))
+                   distance = abs(i - j)
    
-               for j, distance in neighbors:
-                   if distance > Dmax:
-                       continue  # Skip if beyond maximum considered distance
+               # Skip if distance is beyond Dmax or greater than or equal to max_allowed_distance
+               if distance > Dmax or distance >= max_allowed_distance:
+                   continue
    
-                   strength_j = node_strengths[j]
-                   scale_j = node_scales[j]
+               strength_j = node_strengths[j]
+               scale_j = node_scales[j]
    
-                   # Compute average strength and scale
-                   strength = (strength_i + strength_j) / 2.0
-                   scale = (scale_i + scale_j) / 2.0
+               # Compute average strength and scale
+               strength = (strength_i + strength_j) / 2.0
+               scale = (scale_i + scale_j) / 2.0
    
-                   # Calculate connection probability using exponential decay
-                   prob = strength * np.exp(-distance / scale)
-                   prob = min(prob, 1.0)  # Cap probability at 1
+               # Calculate connection probability using exponential decay
+               prob = strength * np.exp(-distance / scale)
+               prob = min(prob, 1.0)  # Cap at 1
    
-                   if np.random.random() < prob:
-                       G.add_edge(i, j)
+               if np.random.random() < prob:
+                   G.add_edge(i, j)
    
        return G
-
    
    def _generate_diffusion(self, params: GraphParams) -> nx.Graph:
        G = nx.Graph()

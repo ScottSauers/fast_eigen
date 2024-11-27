@@ -8,6 +8,8 @@ import time
 from contextlib import contextmanager
 from data_generator import GraphParams, GraphType
 from colorama import init, Fore, Back, Style
+import scipy.linalg
+
 init(autoreset=True)
 
 # Device configuration

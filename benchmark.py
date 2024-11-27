@@ -5,19 +5,22 @@ import time
 from colorama import init, Fore, Back, Style
 from scipy.linalg import eig_banded
 import scipy.linalg
+import pickle
 
 init(autoreset=True)
 
 class LaplacianDataset:
     def __init__(self, data_dir):
-        self.file_list = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith('.npy')]
+        self.file_list = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith('.pkl')]
 
     def __len__(self):
         return len(self.file_list)
 
     def __getitem__(self, idx):
-        # Load L and compute true eigendecomposition for comparison
-        L = np.load(self.file_list[idx])
+        # Load from pickle file
+        import pickle
+        with open(self.file_list[idx], 'rb') as f:
+            L, _ = pickle.load(f)  # The second value is params which we don't need
         eigenvalues, eigenvectors = np.linalg.eigh(L)
         return L, eigenvalues, eigenvectors
 

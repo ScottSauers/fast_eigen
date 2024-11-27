@@ -145,10 +145,6 @@ def run_benchmarks(L):
                 'setup': lambda x: scipy.linalg.cholesky(x, lower=True),
                 'solve': lambda x: (np.linalg.eigvalsh(x @ x.T), None)
             },
-            'cholesky_banded+eigh': {
-                'setup': lambda x: cholesky_banded(extract_bands(x)[0], lower=True),
-                'solve': lambda x: (np.linalg.eigvalsh(x @ x.T), None)
-            }
         })
     
     results = {}

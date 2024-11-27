@@ -120,14 +120,34 @@ class EigensolverModel(torch.nn.Module):
 
 def load_model(checkpoint_dir, N):
     model = EigensolverModel(N).to(device)
-    checkpoint_path = os.path.join(checkpoint_dir, 'best_model.pth')
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError(f"Model checkpoint not found at '{checkpoint_path}'.")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-    else:
-        model.load_state_dict(checkpoint)
+    
+    # Try loading best model first
+    best_model_path = os.path.join(checkpoint_dir, 'best_model.pth')
+    
+    # Try latest checkpoint if best model not found
+    if not os.path.exists(best_model_path):
+        print("Warning: best model not found.")
+        checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith('checkpoint_epoch_')]
+        if not checkpoints:
+            raise FileNotFoundError(f"No checkpoints found in '{checkpoint_dir}'")
+        latest_checkpoint = max(checkpoints, key=lambda x: int(x.split('_')[-1].split('.')[0]))
+        best_model_path = os.path.join(checkpoint_dir, latest_checkpoint)
+    
+    try:
+        checkpoint = torch.load(best_model_path, map_location=device)
+        if isinstance(checkpoint, dict):
+            if 'version' in checkpoint and checkpoint['version'] != model.version:
+                raise ValueError(f"Version mismatch: checkpoint={checkpoint['version']}, model={model.version}")
+            if 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                model.load_state_dict(checkpoint)
+        else:
+            model.load_state_dict(checkpoint)
+        print(f"Successfully loaded model from '{best_model_path}'")
+    except Exception as e:
+        raise RuntimeError(f"Error loading checkpoint: {str(e)}")
+        
     model.eval()
     return model
 

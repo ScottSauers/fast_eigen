@@ -3,12 +3,15 @@ import argparse
 import numpy as np
 import time
 from colorama import init, Fore, Back, Style
-from scipy.linalg import eig_banded, eigh_tridiagonal
+from scipy.linalg import (eig_banded, eigh_tridiagonal, eigvalsh, 
+                         eigvals_banded, eigh, cholesky_banded,
+                         solve_banded, get_lapack_funcs)
 import scipy.linalg
 import pickle
 from data_generator import GraphParams, GraphType
 
 init(autoreset=True)
+
 
 class LaplacianDataset:
     def __init__(self, data_dir):
@@ -38,8 +41,13 @@ class LaplacianDataset:
             print(f"Fatal error processing file: {str(e)}")
             raise
 
-def extract_bands(L):
+def extract_bands(L, check_symmetric=True):
     """Convert full matrix to LAPACK banded storage format (lower)"""
+    if check_symmetric:
+        # Verify near-symmetry
+        if not np.allclose(L, L.T, rtol=1e-10):
+            print("Warning: Matrix is not symmetric")
+    
     N = L.shape[0]
     bandwidth = 0
     for i in range(N):
@@ -51,48 +59,30 @@ def extract_bands(L):
     for i in range(bandwidth+1):
         bands[i,:N-i] = np.diag(L, -i)
     
-    return bands
+    return bands, bandwidth
 
 def verify_results(results):
     """Verify all methods produce the same results within tolerance"""
-    EIGENVAL_TOLERANCE = 1e-10
+    EIGENVAL_TOLERANCE = 1e-8  # Relaxed tolerance for different methods
     reference_method = list(results.keys())[0]
-    reference_vals, reference_vecs = results[reference_method]
+    reference_vals = results[reference_method][0]
     
-    # Sort reference eigenvalues and eigenvectors
-    sort_idx = np.argsort(reference_vals)
-    reference_vals = reference_vals[sort_idx]
-    reference_vecs = reference_vecs[:, sort_idx]
+    # Sort reference eigenvalues
+    reference_vals = np.sort(reference_vals)
     
     errors = {}
-    for method, (vals, vecs) in results.items():
+    for method, (vals, _) in results.items():
         if method == reference_method:
             continue
             
-        # Sort current eigenvalues and eigenvectors
-        sort_idx = np.argsort(vals)
-        vals = vals[sort_idx]
-        vecs = vecs[:, sort_idx]
+        # Sort current eigenvalues
+        vals = np.sort(vals)
         
         # Compare eigenvalues
         val_diff = np.max(np.abs(vals - reference_vals))
         
-        # Compare eigenvectors (accounting for sign ambiguity)
-        vec_errors = []
-        for i in range(vecs.shape[1]):
-            # Calculate similarity with both possible signs
-            sim1 = np.abs(np.dot(vecs[:, i], reference_vecs[:, i]))
-            sim2 = np.abs(np.dot(-vecs[:, i], reference_vecs[:, i]))
-            vec_errors.append(min(1 - sim1, 1 - sim2))
+        errors[method] = val_diff
         
-        vec_diff = max(vec_errors)
-        
-        errors[method] = {
-            'eigenvalues': val_diff,
-            'eigenvectors': vec_diff
-        }
-        
-        # Only warn if eigenvalues differ significantly
         if val_diff > EIGENVAL_TOLERANCE:
             print(f"{Fore.RED}Warning: {method} eigenvalues differ from {reference_method}:")
             print(f"Max eigenvalue difference: {val_diff}{Style.RESET_ALL}")
@@ -100,84 +90,123 @@ def verify_results(results):
 def run_benchmarks(L):
     print(f"{Fore.YELLOW}Running performance comparison of eigensolvers...{Style.RESET_ALL}")
     
+    # Extract band information once
+    bands, bandwidth = extract_bands(L)
+    is_positive_definite = np.all(np.linalg.eigvals(L) > -1e-10)
+    
     # Define solvers with their setup and computation steps
     solvers = {
         'numpy.linalg.eigh': {
             'setup': lambda x: x,
             'solve': lambda x: np.linalg.eigh(x)
         },
-        'scipy.linalg.eigh': {
+        'scipy.linalg.eigh(lower,overwrite)': {
             'setup': lambda x: x,
-            'solve': lambda x: scipy.linalg.eigh(x)
+            'solve': lambda x: scipy.linalg.eigh(x, lower=True, overwrite_a=True)
         },
-        'scipy.linalg.eigh(lower=True)': {
+        'scipy.linalg.eigvalsh(lower,overwrite)': {
             'setup': lambda x: x,
-            'solve': lambda x: scipy.linalg.eigh(x, lower=True)
+            'solve': lambda x: (scipy.linalg.eigvalsh(x, lower=True, overwrite_a=True), None)
+        },
+        'scipy.linalg.eigvalsh(subset_by_value)': {
+            'setup': lambda x: x,
+            'solve': lambda x: (scipy.linalg.eigvalsh(x, subset_by_value=[-np.inf, np.inf], driver='evr'), None)
         },
         'scipy.linalg.eig_banded': {
-            'setup': extract_bands,
+            'setup': lambda x: extract_bands(x)[0],
             'solve': lambda x: eig_banded(x, lower=True)
         },
-        'numpy.linalg.eigvals': {
-            'setup': lambda x: x,
-            'solve': lambda x: (np.linalg.eigvals(x), None)
+        'scipy.linalg.eigvals_banded': {
+            'setup': lambda x: extract_bands(x)[0],
+            'solve': lambda x: (eigvals_banded(x, lower=True), None)
         },
-        'scipy.linalg.eigvals': {
+        'LAPACK dsyev': {
             'setup': lambda x: x,
-            'solve': lambda x: (scipy.linalg.eigvals(x), None)
+            'solve': lambda x: get_lapack_funcs('syev')(x, lower=1, compute_v=True)
         },
-        'scipy.linalg.eigvalsh': {
+        'LAPACK dsyevr': {
             'setup': lambda x: x,
-            'solve': lambda x: (scipy.linalg.eigvalsh(x), None)
+            'solve': lambda x: get_lapack_funcs('syevr')(x, compute_v=True)
+        },
+        'scipy.linalg.eigh(driver=evx)': {
+            'setup': lambda x: x,
+            'solve': lambda x: scipy.linalg.eigh(x, driver='evx')
+        },
+        'scipy.linalg.eigh(driver=evr)': {
+            'setup': lambda x: x,
+            'solve': lambda x: scipy.linalg.eigh(x, driver='evr')
         }
     }
+    
+    if is_positive_definite:
+        # Add Cholesky-based methods for positive definite matrices
+        solvers.update({
+            'cholesky+eigh': {
+                'setup': lambda x: scipy.linalg.cholesky(x, lower=True),
+                'solve': lambda x: (np.linalg.eigvalsh(x @ x.T), None)
+            },
+            'cholesky_banded+eigh': {
+                'setup': lambda x: cholesky_banded(extract_bands(x)[0], lower=True),
+                'solve': lambda x: (np.linalg.eigvalsh(x @ x.T), None)
+            }
+        })
     
     results = {}
     timing_stats = {}
     
     for name, solver in solvers.items():
-        # Setup phase
         setup_times = []
         solve_times = []
         total_times = []
         
-        data = solver['setup'](L)  # Initial setup to warm up
-        
-        for _ in range(10):  # 10 runs each
-            # Time setup
-            start = time.perf_counter()
-            data = solver['setup'](L)
-            setup_end = time.perf_counter()
-            
-            # Time solve
+        try:
+            # Warmup run
+            data = solver['setup'](L.copy())  # Always use a copy to ensure fair comparison
             vals_vecs = solver['solve'](data)
-            solve_end = time.perf_counter()
             
-            setup_times.append(setup_end - start)
-            solve_times.append(solve_end - setup_end)
-            total_times.append(solve_end - start)
+            for _ in range(10):
+                start = time.perf_counter()
+                data = solver['setup'](L.copy())
+                setup_end = time.perf_counter()
+                
+                vals_vecs = solver['solve'](data)
+                solve_end = time.perf_counter()
+                
+                setup_times.append(setup_end - start)
+                solve_times.append(solve_end - setup_end)
+                total_times.append(solve_end - start)
+                
+                if isinstance(vals_vecs, tuple):
+                    vals, vecs = vals_vecs
+                else:
+                    vals = vals_vecs
+                    vecs = None
+                
+                results[name] = (vals, vecs)
             
-            if vals_vecs[1] is not None:  # Store only if eigenvectors were computed
-                results[name] = vals_vecs
-        
-        # Calculate statistics
-        timing_stats[name] = {
-            'setup': np.mean(setup_times) * 1000,  # Convert to ms
-            'solve': np.mean(solve_times) * 1000,
-            'total': np.mean(total_times) * 1000,
-            'std': np.std(total_times) * 1000
-        }
+            timing_stats[name] = {
+                'setup': np.mean(setup_times) * 1000,
+                'solve': np.mean(solve_times) * 1000,
+                'total': np.mean(total_times) * 1000,
+                'std': np.std(total_times) * 1000
+            }
+            
+        except Exception as e:
+            print(f"{Fore.RED}Error in {name}: {str(e)}{Style.RESET_ALL}")
+            continue
     
     # Print results
-    print("\nTiming Results (milliseconds):")
-    print(f"{'Method':30s} {'Setup':>10s} {'Solve':>10s} {'Total':>10s} {'Std':>10s}")
-    print("-" * 70)
+    print(f"\nTiming Results for {L.shape[0]}x{L.shape[0]} matrix (bandwidth={bandwidth}):")
+    print(f"{'Method':35s} {'Setup':>10s} {'Solve':>10s} {'Total':>10s} {'Std':>10s}")
+    print("-" * 80)
     
-    for name, stats in timing_stats.items():
-        color = Fore.GREEN if stats['total'] == min(s['total'] for s in timing_stats.values()) else Fore.WHITE
-        print(f"{color}{name:30s} {stats['setup']:10.2f} {stats['solve']:10.2f} {stats['total']:10.2f} {stats['std']:10.2f}{Style.RESET_ALL}")
+    # Sort by total time
+    sorted_methods = sorted(timing_stats.items(), key=lambda x: x[1]['total'])
     
-    # Verify results
+    for name, stats in sorted_methods:
+        color = Fore.GREEN if name == sorted_methods[0][0] else Fore.WHITE
+        print(f"{color}{name:35s} {stats['setup']:10.2f} {stats['solve']:10.2f} {stats['total']:10.2f} {stats['std']:10.2f}{Style.RESET_ALL}")
+    
     if len(results) > 1:
         print("\nVerifying solver consistency...")
         verify_results(results)

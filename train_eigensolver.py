@@ -94,9 +94,7 @@ class BandLimitedEncoder(nn.Module):
         self.max_channels = max_channels
         
         # Create prototype convolutions - will be reused for all diagonals
-        self.conv_main = nn.Conv1d(1, max_channels, kernel_size=5, padding=2)
-        self.conv_near = nn.Conv1d(1, max_channels//2, kernel_size=5, padding=2)
-        self.conv_far = nn.Conv1d(1, max_channels//4, kernel_size=5, padding=2)
+        self.conv = nn.Conv1d(1, max_channels, kernel_size=5, padding=2)
             
     def forward(self, diagonals):
         features = []
@@ -104,15 +102,8 @@ class BandLimitedEncoder(nn.Module):
             # Process each diagonal without padding to its natural length N-k
             diag = diag.unsqueeze(1)  # Add channel dimension
             
-            # Select appropriate convolution based on diagonal position
-            if k == 0:
-                conv = self.conv_main  # Main diagonal gets full channels
-            elif k <= 3:
-                conv = self.conv_near  # Near diagonals get half channels
-            else:
-                conv = self.conv_far   # Far diagonals get quarter channels
-                
-            feat = torch.relu(conv(diag))
+            # Use same conv for all diagonals
+            feat = torch.relu(self.conv(diag))
             
             # Handle different diagonal lengths naturally
             if k > 0:
@@ -144,17 +135,9 @@ class FusionNetwork(nn.Module):
         # Project and prepare features
         projected_features = []
         for feat in features:
-            # Handle different channel counts
-            if feat.size(1) != self.hidden_dim:
-                feat = nn.functional.interpolate(
-                    feat, 
-                    size=(self.hidden_dim, feat.size(-1)),
-                    mode='bilinear',
-                    align_corners=False
-                )
             feat = feat.permute(0, 2, 1)  # [B, N, C]
             projected_features.append(self.projection(feat))
-            
+
         # Stack features for attention
         # Shape: [B, num_diagonals, N, hidden_dim]
         combined = torch.stack(projected_features, dim=1)

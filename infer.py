@@ -7,6 +7,8 @@ import pickle
 import time
 from contextlib import contextmanager
 from data_generator import GraphParams, GraphType
+from colorama import init, Fore, Back, Style
+init(autoreset=True)
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -168,29 +170,39 @@ def compare_eigendecompositions(eigenvalues_pred, eigenvectors_pred, eigenvalues
     return eigenvalues_pred_sorted, eigenvectors_pred_sorted, eigenvalues_true_sorted, eigenvectors_true_sorted, eigenvalues_diff, eigenvectors_diff
 
 def ascii_bar(value, max_value, width=50):
-    """
-    Generates an ASCII bar for the given value.
-    """
     filled_len = int(round(width * value / float(max_value)))
-    bar = '█' * filled_len + '-' * (width - filled_len)
+    intensity = int(255 * (value / max_value))
+    bar = ''
+    for i in range(width):
+        if i < filled_len:
+            color = Fore.RED if i > width * 0.8 else Fore.YELLOW if i > width * 0.5 else Fore.GREEN
+            bar += color + '██' + Style.RESET_ALL
+        else:
+            bar += Style.DIM + '·' + Style.RESET_ALL
     return bar
 
-def ascii_heatmap(matrix, colormap=" .:-=+*#%@"[::-1]):
-    """
-    Generates an ASCII heatmap for the given matrix.
-    """
-    min_val = matrix.min()
-    max_val = matrix.max()
-    range_val = max_val - min_val if max_val != min_val else 1e-8
-    normalized_matrix = (matrix - min_val) / range_val
-    ascii_art = ''
-    for row in normalized_matrix:
+def ascii_heatmap(matrix, title=""):
+    min_val, max_val = matrix.min(), matrix.max()
+    result = f"\n{title}\n" if title else "\n"
+    result += "    " + "".join(f"{i:^3}" for i in range(matrix.shape[1])) + "\n"
+    
+    for i, row in enumerate(matrix):
+        result += f"{i:2d} |"
         for val in row:
-            index = int(val * (len(colormap) - 1))
-            ascii_char = colormap[index]
-            ascii_art += ascii_char
-        ascii_art += '\n'
-    return ascii_art
+            normalized = (val - min_val) / (max_val - min_val) if max_val != min_val else 0
+            if normalized < 0.2:
+                color = Back.BLUE + Fore.WHITE
+            elif normalized < 0.4:
+                color = Back.CYAN + Fore.BLACK
+            elif normalized < 0.6:
+                color = Back.GREEN + Fore.BLACK
+            elif normalized < 0.8:
+                color = Back.YELLOW + Fore.BLACK
+            else:
+                color = Back.RED + Fore.WHITE
+            result += color + '█' + Style.RESET_ALL
+        result += "|\n"
+    return result
 
 @contextmanager
 def no_grad():
@@ -203,6 +215,7 @@ def main():
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory containing saved model checkpoint.")
     parser.add_argument("--num_samples", type=int, default=10, help="Number of samples to run inference on.")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for inference.")
+    parser.add_argument("--benchmark", action="store_true", help="Run solver benchmarks")
     args = parser.parse_args()
 
     # Load dataset
@@ -275,12 +288,16 @@ def main():
 
             # Visualize eigenvalues
             max_eigenvalue = max(eigenvalues_true_sorted.max().item(), eigenvalues_pred_sorted.max().item())
-            print("\nTrue Eigenvalues:")
+            print(f"{Fore.CYAN}=== True Eigenvalues ==={Style.RESET_ALL}")
             bar_true = ascii_bar_chart(eigenvalues_true_sorted.cpu().numpy(), max_eigenvalue)
             print(bar_true)
-            print("\nPredicted Eigenvalues:")
+            print(f"{Fore.CYAN}=== Predicted Eigenvalues ==={Style.RESET_ALL}")
             bar_pred = ascii_bar_chart(eigenvalues_pred_sorted.cpu().numpy(), max_eigenvalue)
             print(bar_pred)
+            
+            if args.benchmark:
+                print(f"\n{Fore.CYAN}=== Benchmarking ==={Style.RESET_ALL}")
+                run_benchmarks(L_np)
 
             # Visualize eigenvectors
             print("\nTrue Eigenvectors (heatmap):")
@@ -302,6 +319,31 @@ def main():
     print(f"Average Inference Time per Sample: {avg_inference_time * 1000:.2f} ms")
     print(f"Average Eigenvalue Absolute Error: {avg_eigenvalue_error:.6f}")
     print(f"Average Eigenvector Cosine Similarity: {avg_eigenvector_similarity * 100:.2f}%")
+
+def run_benchmarks(L_np):
+    results = {}
+    
+    # Standard eigensolvers
+    solvers = {
+        'numpy.linalg.eigh': lambda x: np.linalg.eigh(x),
+        'scipy.linalg.eigh': lambda x: scipy.linalg.eigh(x),
+        'scipy.linalg.eigh_banded': lambda x: scipy.linalg.eigh_banded(
+            np.array([np.diag(L_np, k) for k in range(L_np.shape[0])])
+        ),
+        'neural_network': lambda x: model(extract_diagonals(torch.from_numpy(x).unsqueeze(0).to(device)))
+    }
+    
+    for name, solver in solvers.items():
+        times = []
+        for _ in range(5):  # 5 runs each
+            start = time.perf_counter()
+            _ = solver(L_np)
+            end = time.perf_counter()
+            times.append(end - start)
+        
+        avg_time = np.mean(times) * 1000  # Convert to ms
+        color = Fore.GREEN if avg_time == min(times) else Fore.YELLOW
+        print(f"{color}{name:25s}: {avg_time:8.2f} ms{Style.RESET_ALL}")
 
 def ascii_bar_chart(values, max_value, width=50):
     """

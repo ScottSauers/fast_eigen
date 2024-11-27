@@ -18,12 +18,36 @@ class LaplacianDataset:
         return len(self.file_list)
 
     def __getitem__(self, idx):
-        # Load from pickle file
-        import pickle
-        with open(self.file_list[idx], 'rb') as f:
-            L, _ = pickle.load(f)  # The second value is params which we don't need
-        eigenvalues, eigenvectors = np.linalg.eigh(L)
-        return L, eigenvalues, eigenvectors
+        try:
+            # Load from pickle file and print debugging info
+            filename = self.file_list[idx]
+            print(f"Attempting to load {filename}")
+            file_size = os.path.getsize(filename)
+            print(f"File size: {file_size} bytes")
+            
+            with open(filename, 'rb') as f:
+                try:
+                    data = pickle.load(f)
+                    if isinstance(data, tuple) and len(data) == 2:
+                        L, _ = data
+                    else:
+                        print(f"Unexpected data format in {filename}")
+                        print(f"Data type: {type(data)}")
+                        raise ValueError("Unexpected pickle format")
+                        
+                    eigenvalues, eigenvectors = np.linalg.eigh(L)
+                    return L, eigenvalues, eigenvectors
+                except Exception as e:
+                    print(f"Error loading {filename}: {str(e)}")
+                    # Try next file
+                    if idx + 1 < len(self.file_list):
+                        print(f"Trying next file...")
+                        return self.__getitem__(idx + 1)
+                    else:
+                        raise
+        except Exception as e:
+            print(f"Fatal error processing file: {str(e)}")
+            raise
 
 def extract_bands(L):
     """Convert full matrix to LAPACK banded storage format (lower)"""

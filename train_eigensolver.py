@@ -31,27 +31,46 @@ if use_amp:
 else:
     scaler = None
 
-def save_checkpoint(state, checkpoint_dir, epoch):
+def save_checkpoint(model, state, checkpoint_dir, epoch):
     filename = os.path.join(checkpoint_dir, f'checkpoint_epoch_{epoch}.pth')
+    state['version'] = model.version  # version to checkpoint
     torch.save(state, filename)
-    print(f"Checkpoint saved at epoch {epoch}.")
+    print(f"Checkpoint saved at epoch {epoch} (version {model.version})")
 
 def load_checkpoint(model, optimizer, scheduler, checkpoint_dir):
     checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith('checkpoint_epoch_')]
     if not checkpoints:
         print("No checkpoint found. Starting training from scratch.")
-        return 0  # Start from epoch 0
+        return 0
 
-    # Find latest checkpoint
     latest_checkpoint = max(checkpoints, key=lambda x: int(x.split('_')[-1].split('.')[0]))
     checkpoint_path = os.path.join(checkpoint_dir, latest_checkpoint)
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    start_epoch = checkpoint['epoch'] + 1  # Resume from next epoch
-    print(f"Loaded checkpoint from epoch {checkpoint['epoch']}. Resuming from epoch {start_epoch}.")
-    return start_epoch
+    
+    try:
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        
+        # Version check
+        if 'version' not in checkpoint:
+            print("Legacy checkpoint detected. Starting fresh training.")
+            return 0
+            
+        if checkpoint['version'] != model.version:
+            print(f"Version mismatch: checkpoint={checkpoint['version']}, model={model.version}")
+            print("Starting fresh training with new architecture.")
+            return 0
+
+        # Load state dicts if versions match
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        print(f"Successfully loaded checkpoint from epoch {checkpoint['epoch']}")
+        return start_epoch
+        
+    except (RuntimeError, KeyError) as e:
+        print(f"Error loading checkpoint: {str(e)}")
+        print("Starting fresh training.")
+        return 0
 
 class LaplacianDataset(Dataset):
     def __init__(self, data_dir):
@@ -158,7 +177,8 @@ class EigenDecompositionNetwork(nn.Module):
     def __init__(self, N):
         super(EigenDecompositionNetwork, self).__init__()
         self.N = N
-        self.fc = nn.Sequential(
+        self.version = "v2"  # version tracking
+        self.decoder = nn.Sequential(
             nn.Linear(N*64, 512),
             nn.ReLU(),
             nn.Linear(512, N + N*N)
@@ -166,20 +186,12 @@ class EigenDecompositionNetwork(nn.Module):
 
     def forward(self, x):
         batch_size = x.size(0)
-        # Reshape input tensor to (batch_size, N*64)
         x = x.reshape(batch_size, -1)
-        
-        # Pass through fully connected layers
-        out = self.fc(x)
-        
-        # Split output into eigenvalues and eigenvectors
+        out = self.decoder(x)
         eigenvalues = out[:, :self.N]
         eigenvectors = out[:, self.N:].reshape(batch_size, self.N, self.N)
-        
-        # Apply constraints
-        eigenvalues = torch.relu(eigenvalues)  # Ensure non-negative eigenvalues
-        eigenvectors = torch.nn.functional.normalize(eigenvectors, dim=2)  # Normalize eigenvectors
-        
+        eigenvalues = torch.relu(eigenvalues)
+        eigenvectors = torch.nn.functional.normalize(eigenvectors, dim=2)
         return eigenvalues, eigenvectors
 
 class EigensolverModel(nn.Module):
@@ -313,7 +325,7 @@ def train(model, train_loader, val_loader, optimizer, scheduler, start_epoch, ch
         df = pd.DataFrame(loss_history)
         df.to_csv(loss_history_file, index=False)
 
-        save_checkpoint({
+        save_checkpoint(model, {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),

@@ -3,7 +3,6 @@ import argparse
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-import pickle
 import time
 from contextlib import contextmanager
 from data_generator import GraphParams, GraphType
@@ -299,7 +298,7 @@ def main():
             
             if not args.no_benchmark:
                 print(f"\n{Fore.CYAN}=== Benchmarking ==={Style.RESET_ALL}")
-                run_benchmarks(L_np)
+                run_benchmarks(L_np, model)
 
             # Visualize eigenvectors
             print("\nTrue Eigenvectors (heatmap):")
@@ -322,7 +321,7 @@ def main():
     print(f"Average Eigenvalue Absolute Error: {avg_eigenvalue_error:.6f}")
     print(f"Average Eigenvector Cosine Similarity: {avg_eigenvector_similarity * 100:.2f}%")
 
-def run_benchmarks(L_np):
+def run_benchmarks(L_np, model):
     results = {}
     
     # Standard eigensolvers

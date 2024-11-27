@@ -27,12 +27,6 @@ Storage organization:
 
 The encoder implements a parallel processing approach optimized for GPU computation. Each diagonal receives specialized processing through dedicated convolutional paths with dimensions scaled to preserve necessary information capacity.
 
-Channel architecture:
-- Main diagonal: 1→64 channels (primary information carrier)
-- First three off-diagonals: 1→32 channels
-- Remaining diagonals: 1→16 channels
-- Or use same channels (64) for all diagonals?
-
 This channel structure ensures sufficient capacity for eigenspace information while maintaining computational efficiency. All convolutional kernels employ a fixed size of min(b,5), ensuring operations remain strictly within the banded structure.
 
 Input processing:
@@ -52,9 +46,7 @@ Structural preservation:
 The fusion network integrates features from the band-limited encoder using a lightweight transformer architecture. Input consists of b+1 feature maps (one per diagonal) from the CNN encoder, where b is the bandwidth of the input matrix.
 
 Input structure:
-- Main diagonal: length N with 64 channels
-- First three off-diagonals: length N with 32 channels
-- Remaining off-diagonals: length N with 16 channels
+- Diagonals: length N with 64 channels
 - Total of b+1 feature maps, where b varies by input matrix
 
 Feature projection:

@@ -250,7 +250,6 @@ def main():
         # Limit detailed output to first few samples
         if total_samples < 3:
             # Print visualization
-            print(f"\nSample {total_samples+1}:")
             print(f"Sample {total_samples+1} analysis:")
             print(f"Inference Time: {inference_time * 1000:.2f} ms")
 

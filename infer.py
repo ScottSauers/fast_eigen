@@ -13,18 +13,19 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class LaplacianDataset(Dataset):
     def __init__(self, data_dir):
-        # Load .pkl files containing L and params
-        self.file_list = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith('.pkl')]
+        self.file_list = [os.path.join(data_dir, f) for f in os.listdir(data_dir) if f.endswith('.npy')]
 
     def __len__(self):
         return len(self.file_list)
 
     def __getitem__(self, idx):
         # Load L and params from file
-        with open(self.file_list[idx], 'rb') as f:
-            L, params = pickle.load(f)
+        L = np.load(self.file_list[idx])
         L = torch.from_numpy(L).float()
-        return L, params
+        eigenvalues, eigenvectors = np.linalg.eigh(L)
+        eigenvalues = torch.from_numpy(eigenvalues).float()
+        eigenvectors = torch.from_numpy(eigenvectors).float()
+        return L, eigenvalues, eigenvectors
 
 def extract_diagonals(L):
     diagonals = []
@@ -123,7 +124,10 @@ def load_model(checkpoint_dir, N):
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Model checkpoint not found at '{checkpoint_path}'.")
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint)
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        model.load_state_dict(checkpoint['model_state_dict'])
+    else:
+        model.load_state_dict(checkpoint)
     model.eval()
     return model
 

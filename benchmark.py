@@ -6,6 +6,7 @@ from colorama import init, Fore, Back, Style
 from scipy.linalg import eig_banded
 import scipy.linalg
 import pickle
+from data_generator import GraphParams, GraphType
 
 init(autoreset=True)
 

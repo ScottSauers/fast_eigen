@@ -130,15 +130,6 @@ def run_benchmarks(L):
         }
     }
     
-    if is_positive_definite:
-        # Add Cholesky-based methods for positive definite matrices
-        solvers.update({
-            'cholesky+eigh': {
-                'setup': lambda x: scipy.linalg.cholesky(x, lower=True),
-                'solve': lambda x: (np.linalg.eigvalsh(x @ x.T), None)
-            },
-        })
-    
     results = {}
     timing_stats = {}
     

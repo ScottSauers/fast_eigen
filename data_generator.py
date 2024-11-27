@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from tqdm import tqdm
 import pickle
+from data_generator import GraphParams
 
 class GraphType(Enum):
    PATH_COMMUNITY = "path_community"

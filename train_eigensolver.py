@@ -320,6 +320,7 @@ def train(model, train_loader, val_loader, optimizer, scheduler, start_epoch, ch
             best_model_path = os.path.join(checkpoint_dir, 'best_model.pth')
             torch.save(model.state_dict(), best_model_path)
             print("Best model saved.")
+        epoch += 1
 
 def validate(model, val_loader):
     model.eval()

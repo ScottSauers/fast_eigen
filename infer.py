@@ -21,8 +21,8 @@ class LaplacianDataset(Dataset):
     def __getitem__(self, idx):
         # Load L and params from file
         L = np.load(self.file_list[idx])
-        L = torch.from_numpy(L).float()
         eigenvalues, eigenvectors = np.linalg.eigh(L)
+        L = torch.from_numpy(L).float()
         eigenvalues = torch.from_numpy(eigenvalues).float()
         eigenvectors = torch.from_numpy(eigenvectors).float()
         return L, eigenvalues, eigenvectors

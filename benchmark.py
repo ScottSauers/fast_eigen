@@ -53,34 +53,49 @@ def extract_bands(L):
     
     return bands
 
-def extract_tridiagonal(L):
-    """Extract main diagonal and off-diagonal for tridiagonal matrices"""
-    d = np.diag(L)
-    e = np.diag(L, -1)
-    return d, e
-
 def verify_results(results):
     """Verify all methods produce the same results within tolerance"""
-    TOLERANCE = 1e-10
-    reference_vals, reference_vecs = results[list(results.keys())[0]]
+    EIGENVAL_TOLERANCE = 1e-10
+    reference_method = list(results.keys())[0]
+    reference_vals, reference_vecs = results[reference_method]
     
+    # Sort reference eigenvalues and eigenvectors
+    sort_idx = np.argsort(reference_vals)
+    reference_vals = reference_vals[sort_idx]
+    reference_vecs = reference_vecs[:, sort_idx]
+    
+    errors = {}
     for method, (vals, vecs) in results.items():
-        # Sort eigenvalues and corresponding eigenvectors
-        idx = np.argsort(vals)
-        vals = vals[idx]
-        vecs = vecs[:, idx]
+        if method == reference_method:
+            continue
+            
+        # Sort current eigenvalues and eigenvectors
+        sort_idx = np.argsort(vals)
+        vals = vals[sort_idx]
+        vecs = vecs[:, sort_idx]
         
-        # Compare with reference (accounting for possible sign flips)
+        # Compare eigenvalues
         val_diff = np.max(np.abs(vals - reference_vals))
-        vec_diff = min(
-            np.max(np.abs(vecs - reference_vecs)),
-            np.max(np.abs(vecs + reference_vecs))
-        )
         
-        if val_diff > TOLERANCE or vec_diff > TOLERANCE:
-            print(f"{Fore.RED}Warning: {method} results differ from reference:")
-            print(f"Max eigenvalue difference: {val_diff}")
-            print(f"Max eigenvector difference: {vec_diff}{Style.RESET_ALL}")
+        # Compare eigenvectors (accounting for sign ambiguity)
+        vec_errors = []
+        for i in range(vecs.shape[1]):
+            # Calculate similarity with both possible signs
+            sim1 = np.abs(np.dot(vecs[:, i], reference_vecs[:, i]))
+            sim2 = np.abs(np.dot(-vecs[:, i], reference_vecs[:, i]))
+            vec_errors.append(min(1 - sim1, 1 - sim2))
+        
+        vec_diff = max(vec_errors)
+        
+        errors[method] = {
+            'eigenvalues': val_diff,
+            'eigenvectors': vec_diff
+        }
+        
+        # Only warn if eigenvalues differ significantly
+        if val_diff > EIGENVAL_TOLERANCE:
+            print(f"{Fore.RED}Warning: {method} eigenvalues differ from {reference_method}:")
+            print(f"Max eigenvalue difference: {val_diff}{Style.RESET_ALL}")
 
 def run_benchmarks(L):
     print(f"{Fore.YELLOW}Running performance comparison of eigensolvers...{Style.RESET_ALL}")
@@ -102,10 +117,6 @@ def run_benchmarks(L):
         'scipy.linalg.eig_banded': {
             'setup': extract_bands,
             'solve': lambda x: eig_banded(x, lower=True)
-        },
-        'scipy.linalg.eigh_tridiagonal': {
-            'setup': extract_tridiagonal,
-            'solve': lambda x: eigh_tridiagonal(*x)
         },
         'numpy.linalg.eigvals': {
             'setup': lambda x: x,

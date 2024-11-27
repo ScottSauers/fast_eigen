@@ -117,6 +117,7 @@ class LaplacianGenerator:
        return GraphParams(**params)
 
    def generate(self, params: GraphParams) -> Tuple[np.ndarray, nx.Graph]:
+       # Set default parameters based on graph type
        if params.graph_type == GraphType.APPROX_CIRCULANT:
            params.k_neighbors = params.k_neighbors if params.k_neighbors is not None else 2
        elif params.graph_type == GraphType.CIRCULANT_COMMUNITY:
@@ -130,15 +131,25 @@ class LaplacianGenerator:
            params.min_connections = params.min_connections if params.min_connections is not None else 1
            params.distance_decay = params.distance_decay if params.distance_decay is not None else 0.5
    
-       generator_func = self.supported_types[params.graph_type]
-       G = generator_func(params)
-       
-       if not nx.is_connected(G):
-           self._make_connectivity(G)
+       # Try generating a valid graph with retries
+       max_retries = 3
+       for attempt in range(max_retries):
+           generator_func = self.supported_types[params.graph_type]
+           G = generator_func(params)
            
-       L = nx.laplacian_matrix(G).toarray()
-       return L, G
-
+           # Check if graph is empty
+           if len(G.nodes()) == 0:
+               if attempt == max_retries - 1:
+                   raise RuntimeError(f"Failed to generate non-null graph after {max_retries} attempts")
+               continue
+               
+           # Make graph connected if needed
+           if not nx.is_connected(G):
+               self._make_connectivity(G)
+   
+           L = nx.laplacian_matrix(G).toarray()
+           return L, G
+    
    def _generate_path_community(self, params: GraphParams) -> nx.Graph:
        G = nx.Graph()
    

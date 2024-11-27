@@ -215,7 +215,7 @@ def main():
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints", help="Directory containing saved model checkpoint.")
     parser.add_argument("--num_samples", type=int, default=10, help="Number of samples to run inference on.")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for inference.")
-    parser.add_argument("--benchmark", action="store_true", help="Run solver benchmarks")
+    parser.add_argument("--no_benchmark", action="store_true", help="Skip solver benchmarks")
     args = parser.parse_args()
 
     # Load dataset
@@ -295,7 +295,7 @@ def main():
             bar_pred = ascii_bar_chart(eigenvalues_pred_sorted.cpu().numpy(), max_eigenvalue)
             print(bar_pred)
             
-            if args.benchmark:
+            if not args.no_benchmark:
                 print(f"\n{Fore.CYAN}=== Benchmarking ==={Style.RESET_ALL}")
                 run_benchmarks(L_np)
 

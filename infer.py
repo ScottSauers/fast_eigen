@@ -327,12 +327,9 @@ def run_benchmarks(L_np):
     
     # Standard eigensolvers
     solvers = {
-        'numpy.linalg.eigh': lambda x: np.linalg.eigh(x),
-        'scipy.linalg.eigh': lambda x: scipy.linalg.eigh(x),
-        'scipy.linalg.eig_banded': lambda x: scipy.linalg.eig_banded(
-            np.array([np.diag(L_np, k) for k in range(L_np.shape[0])])
-        ),
-        'neural_network': lambda x: model(extract_diagonals(torch.from_numpy(x).unsqueeze(0).to(device)))
+            'numpy.linalg.eigh': lambda x: np.linalg.eigh(x),
+            'scipy.linalg.eigh': lambda x: scipy.linalg.eigh(x), 
+            'neural_network': lambda x: model(extract_diagonals(torch.from_numpy(x).unsqueeze(0).to(device)))
     }
     
     for name, solver in solvers.items():

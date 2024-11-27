@@ -120,14 +120,6 @@ def run_benchmarks(L):
             'setup': lambda x: extract_bands(x)[0],
             'solve': lambda x: (eigvals_banded(x, lower=True), None)
         },
-        'LAPACK dsyev': {
-            'setup': lambda x: x,
-            'solve': lambda x: get_lapack_funcs('syev')(x, lower=1, compute_v=True)
-        },
-        'LAPACK dsyevr': {
-            'setup': lambda x: x,
-            'solve': lambda x: get_lapack_funcs('syevr')(x, compute_v=True)
-        },
         'scipy.linalg.eigh(driver=evx)': {
             'setup': lambda x: x,
             'solve': lambda x: scipy.linalg.eigh(x, driver='evx')

@@ -194,7 +194,7 @@ def main():
         print("No data found in the specified data directory.")
         return
 
-    sample_L, _ = dataset[0]
+    sample_L, _, _ = dataset[0]
     N = sample_L.size(0)
 
     # Load the model
@@ -210,7 +210,7 @@ def main():
     eigenvalue_errors = []
     eigenvector_similarities = []
 
-    for idx, (L_batch, params) in enumerate(data_loader):
+    for idx, (L_batch, eigenvalues_batch, eigenvectors_batch) in enumerate(data_loader):
         if total_samples >= args.num_samples:
             break
 
@@ -251,7 +251,7 @@ def main():
         if total_samples < 3:
             # Print visualization
             print(f"\nSample {total_samples+1}:")
-            print(f"Graph type: {params[0].graph_type.value}, n={params[0].n}")
+            print(f"Sample {total_samples+1} analysis:")
             print(f"Inference Time: {inference_time * 1000:.2f} ms")
 
             # Visualize eigenvalues

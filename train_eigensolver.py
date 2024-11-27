@@ -160,7 +160,6 @@ class EigenDecompositionNetwork(nn.Module):
     def __init__(self, N):
         super(EigenDecompositionNetwork, self).__init__()
         self.N = N
-        self.version = "v2"  # version tracking
         self.decoder = nn.Sequential(
             nn.Linear(N*64, 512),
             nn.ReLU(),
@@ -181,6 +180,7 @@ class EigensolverModel(nn.Module):
     def __init__(self, N):
         super(EigensolverModel, self).__init__()
         self.N = N
+        self.version = "v2"
         self.encoder = BandLimitedEncoder(N)
         self.fusion = FusionNetwork(N)
         self.decoder = EigenDecompositionNetwork(N)

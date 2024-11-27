@@ -6,7 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 import pickle
 import time
 from contextlib import contextmanager
-from data_generator import GraphParams
+from data_generator import GraphParams, GraphType
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
